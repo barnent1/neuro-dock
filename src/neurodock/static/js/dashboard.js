@@ -6,36 +6,23 @@ let pendingAction = null;
 
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadProjects();
+    await loadCurrentProject();
     setupEventListeners();
     loadCurrentTab();
 });
 
-// Load projects from neurodock.json or available projects
-async function loadProjects() {
+// Load the current project from neurodock.json (backend-scoped, no dropdown)
+async function loadCurrentProject() {
     try {
         const response = await fetch('/api/projects');
         const projects = await response.json();
-        
-        const selector = document.getElementById('projectSelector');
-        selector.innerHTML = '';
-        
-        projects.forEach(project => {
-            const option = document.createElement('option');
-            option.value = project.id;
-            option.textContent = project.name;
-            selector.appendChild(option);
-        });
-        
-        // Try to load default project from neurodock.json
-        const defaultProject = projects.find(p => p.is_default);
-        if (defaultProject) {
-            selector.value = defaultProject.id;
-            currentProject = defaultProject;
-            refreshData();
+        // Always use the first/default project
+        if (projects.length > 0) {
+            currentProject = projects[0];
+            await refreshData();
         }
     } catch (error) {
-        console.error('Failed to load projects:', error);
+        console.error('Failed to load project:', error);
     }
 }
 
@@ -358,3 +345,4 @@ function escapeHtml(unsafe) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+    if (task.status === 'blocked') return task.progress || 25;

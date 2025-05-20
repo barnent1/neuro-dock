@@ -175,10 +175,8 @@ class MemoryRepository:
         
         async with neo4j_client.get_session() as session:
             result = await session.run(query, params)
-            records = await result.fetch()
-            
             memories = []
-            for record in records:
+            async for record in result:
                 node_data = record["related"]
                 memories.append(
                     MemoryNode(
@@ -190,7 +188,6 @@ class MemoryRepository:
                         project_id=node_data.get("project_id")
                     )
                 )
-            
             return memories
     
     @staticmethod
@@ -255,10 +252,8 @@ class MemoryRepository:
         async with neo4j_client.get_session() as session:
             try:
                 result = await session.run(query, params)
-                records = await result.fetch()
-                
                 memories = []
-                for record in records:
+                async for record in result:
                     node_data = record["m"]
                     memories.append(
                         MemoryNode(
@@ -270,7 +265,6 @@ class MemoryRepository:
                             project_id=node_data.get("project_id")
                         )
                     )
-                
                 return memories
             except Exception as e:
                 # If APOC procedures are not available, fall back to standard search
@@ -365,10 +359,8 @@ class MemoryRepository:
         
         async with neo4j_client.get_session() as session:
             result = await session.run(query, params)
-            records = await result.fetch()
-            
             memories = []
-            for record in records:
+            async for record in result:
                 node_data = record["m"]
                 memories.append(
                     MemoryNode(
@@ -380,5 +372,7 @@ class MemoryRepository:
                         project_id=node_data.get("project_id")
                     )
                 )
+            return memories
             
             return memories
+            

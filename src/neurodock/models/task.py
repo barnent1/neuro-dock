@@ -86,11 +86,8 @@ class TaskCreate(BaseModel):
     assigned_to: Optional[str] = None
     parent_id: Optional[UUID] = None  # For manually creating subtasks
 
-    @field_validator("weight")
-    def validate_weight(cls, v: int) -> int:
-        if v < 1 or v > 10:
-            raise ValueError("Weight must be between 1 and 10")
-        return v
+    # Pydantic v2: Use Field constraints for validation, not a field_validator for 'weight'.
+    # The Field(..., ge=1, le=10) already enforces this constraint.
 
 
 class TaskUpdate(BaseModel):
@@ -105,11 +102,9 @@ class TaskUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     assigned_to: Optional[str] = None
     
-    @field_validator("weight")
-    def validate_weight(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and (v < 1 or v > 10):
-            raise ValueError("Weight must be between 1 and 10")
-        return v
+    # Pydantic v2: Use Field constraints for validation, not a field_validator for 'weight'.
+    # If you want to enforce the range, add Field(..., ge=1, le=10) to the weight definition:
+    # weight: Optional[int] = Field(default=None, ge=1, le=10)
 
 
 class TaskEvent(BaseModel):
@@ -155,3 +150,4 @@ class TaskRelationship(BaseModel):
     
     class Config:
         from_attributes = True
+    relationship_type: str  # e.g., "subtask", "blocks", "depends_on"

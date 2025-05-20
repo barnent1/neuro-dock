@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import pathlib
 
+
 from neurodock.routes import memory, task, mcp, ui, api, projects
 from neurodock.agents.autonomous_agent import agent
 
@@ -18,12 +19,27 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
 # Create FastAPI app
 app = FastAPI(
     title="NeuroDock",
     description="A memory and task execution system for AI agents using Neo4j and Model Context Protocol",
     version="0.1.0",
 )
+
+
+# Add a root /neuro-dock endpoint directly to the app for VS Code MCP compatibility
+from fastapi.responses import JSONResponse
+from neurodock.routes.mcp import get_mcp_config
+
+# Create FastAPI app
+app = FastAPI(
+    title="NeuroDock",
+    description="A memory and task execution system for AI agents using Neo4j and Model Context Protocol",
+    version="0.1.0",
+)
+
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -81,24 +97,21 @@ async def shutdown_event():
             logger.error(f"Error stopping agent: {str(e)}")
 
 
-@app.get("/")
-async def root():
+
+# Route root ("/") to the dashboard UI
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+import pathlib
+
+templates = Jinja2Templates(directory=str(pathlib.Path(__file__).parent / "templates"))
+
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
     """
-    Root endpoint, returns basic system information.
+    Render the main dashboard UI with both memories and tasks sections.
     """
-    return {
-        "name": "NeuroDock",
-        "version": "0.1.0",
-        "description": "Memory and task execution system for AI agents",
-        "endpoints": {
-            "memory": "/memory",
-            "task": "/task",
-            "mcp": "/mcp",
-            "ui": "/ui",
-            "api": "/api",
-            "docs": "/docs",
-        }
-    }
+    return templates.TemplateResponse("dashboard.html", {"request": request})
 
 
 @app.get("/health")

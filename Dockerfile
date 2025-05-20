@@ -28,6 +28,4 @@ ENV NEO4J_PASSWORD=password
 CMD ["uvicorn", "neurodock.main:app", "--host", "0.0.0.0", "--port", "4000", "--workers", "1", "--log-level", "info"]
 ENV NEO4J_USER=neo4j
 ENV NEO4J_PASSWORD=neurodock
-
 # Command to run the application
-CMD ["python", "-m", "neurodock.cli", "serve"]

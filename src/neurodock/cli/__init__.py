@@ -41,15 +41,7 @@ def docker_command(action: str, populate: bool, test: bool):
         click.echo("Starting NeuroDock Docker containers...")
         subprocess.run(['docker-compose', 'up', '-d'], cwd=project_root, check=True)
         
-        if populate:
-            click.echo("Waiting for services to start...")
-            time.sleep(5)
-            click.echo("Populating sample data...")
-            subprocess.run(
-                ['docker-compose', 'exec', '-T', 'app', 'python', '-m', 'neurodock.scripts.populate_sample_data', '10'],
-                cwd=project_root,
-                check=True
-            )
+        # Removed automatic sample data population for production/real data use
         
         if test:
             click.echo("Running MCP integration tests...")
@@ -122,13 +114,7 @@ def init_project(project_dir: str, project_id: Optional[str]):
 @click.option("--count", "-n", default=10, help="Number of memories to create.")
 def populate(count: int):
     """Populate the database with sample data."""
-    from neurodock.scripts.populate_sample_data import create_sample_memories
-    
-    async def run():
-        await create_sample_memories(count)
-    
-    asyncio.run(run())
-    click.echo(f"Created {count} sample memories.")
+    click.echo("Sample data population is disabled.")
 
 def main():
     """Main entry point for the CLI."""
@@ -136,3 +122,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

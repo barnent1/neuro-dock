@@ -19,12 +19,13 @@ templates = Jinja2Templates(directory=str(template_path))
 # Create router
 router = APIRouter(tags=["ui"])
 
+
 @router.get("/")
 async def dashboard(request: Request):
     """
-    Render the main dashboard UI
+    Render the main dashboard UI with both memories and tasks sections
     """
-    return templates.TemplateResponse("memory_dashboard.html", {"request": request})
+    return templates.TemplateResponse("dashboard.html", {"request": request})
 
 @router.get("/memories")
 async def memories_page(request: Request):

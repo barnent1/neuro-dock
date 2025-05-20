@@ -17,7 +17,27 @@ from neurodock.services.project_settings import ProjectSettings
 # Configure logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/mcp", tags=["mcp"])
+router = APIRouter(prefix="/neuro-dock", tags=["mcp"])
+ 
+# ... (rest of your code, including router definition and all imports) ...
+
+# Add a root GET /neuro-dock endpoint for MCP tool discovery (VS Code compatibility)
+@router.get("")
+@router.get("/")
+async def get_mcp_root():
+    """
+    Root endpoint for MCP tool discovery. Returns the same info as /config for VS Code compatibility.
+    """
+    return await get_mcp_config()
+from neurodock.models.task import TaskCreate, TaskPriority
+from neurodock.neo4j.task_repository import TaskRepository
+from neurodock.services.context_selector import ContextSelector
+from neurodock.services.project_settings import ProjectSettings
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/neuro-dock", tags=["mcp"])
 
 
 class ModelContextProtocolService:
@@ -241,24 +261,44 @@ class ModelContextProtocolService:
 @router.get("/config")
 async def get_mcp_config():
     """
-    Return the MCP server configuration.
-    This helps VSCode understand the capabilities of this MCP server.
+    Return the MCP server configuration and explicit tool operations for VSCode MCP.
     """
     return {
         "version": "1.0",
         "name": "NeuroDock MCP Server",
-        "capabilities": {
-            "memory": True,
-            "tasks": True,
-            "context": True,
-            "websocket": True
-        },
-        "endpoints": {
-            "memory": "/mcp/memory",
-            "task": "/mcp/task",
-            "context": "/mcp/context",
-            "websocket": "/mcp/ws"
-        },
+        "description": "Production-grade MCP server for NeuroDock",
+        "tools": [
+            {
+                "name": "addMemory",
+                "endpoint": "/neuro-dock/memory",
+                "method": "POST",
+                "description": "Store a new memory"
+            },
+            {
+                "name": "addTask",
+                "endpoint": "/neuro-dock/task",
+                "method": "POST",
+                "description": "Create a new task"
+            },
+            {
+                "name": "queryContext",
+                "endpoint": "/neuro-dock/context",
+                "method": "POST",
+                "description": "Query for relevant context/memories"
+            },
+            {
+                "name": "editorContext",
+                "endpoint": "/neuro-dock/editor-context",
+                "method": "POST",
+                "description": "Get context for the editor"
+            },
+            {
+                "name": "websocket",
+                "endpoint": "/neuro-dock/ws",
+                "method": "WEBSOCKET",
+                "description": "Bidirectional MCP communication"
+            }
+        ],
         "memoryTypes": [type.value for type in MemoryType],
         "taskPriorities": [priority.value for priority in TaskPriority]
     }
@@ -404,3 +444,4 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"Error in WebSocket connection: {str(e)}")
         if websocket.client_state != websocket.client_state.DISCONNECTED:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+            await websocket.send_json(response)
