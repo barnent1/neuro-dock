@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+
+# NeuroDock CLI Launcher
+# This script provides a convenient way to access the neurodock CLI commands
+
+# Determine the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
+
+# Execute the Python module-based CLI
+python -m neurodock.cli "$@"
+
+# Check if user has installed the package
+if ! command -v neurodock &> /dev/null; then
+    echo "NeuroDock CLI not found in path. Installing package in development mode..."
+    cd "$PROJECT_ROOT"
+    pip install -e .
+fi
+
+# Check for Docker
+if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; then
+    echo "Docker found. Would you like to run NeuroDock with Docker? (y/n)"
+    read -n 1 -r
+    echo
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        cd "$PROJECT_ROOT"
+        docker-compose up
+        exit 0
+    fi
+fi
+
+# If not using Docker, run directly with Python
+echo "Starting NeuroDock server locally..."
+cd "$PROJECT_ROOT"
+
+# Ask if the user wants to populate sample data
+echo "Would you like to populate sample data? (y/n)"
+read -n 1 -r
+echo
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    neurodock populate --count 10
+fi
+
+# Start the server with hot-reload enabled
+neurodock serve --reload
+
+# Exit
+echo "NeuroDock server stopped."

@@ -1,0 +1,25 @@
+{
+  "project_id": "neurodock",
+  "name": "NeuroDock",
+  "description": "Memory and task execution system for AI agents using Neo4j and MCP",
+  "memory_isolation_level": "strict",
+  "memory_ttl_days": 90,
+  "task_auto_creation": true,
+  "agent_enabled": true,
+  "excluded_paths": [
+    "node_modules",
+    "dist",
+    "build",
+    ".git",
+    "__pycache__",
+    "*.pyc"
+  ],
+  "memory_types": {
+    "code": true,
+    "documentation": true,
+    "comment": true,
+    "important": true,
+    "normal": true,
+    "trivial": false
+  }
+}

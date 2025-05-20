@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+# Start NeuroDock Memory Dashboard
+# This script starts the NeuroDock system with a focus on the Memory Dashboard UI
+
+# Determine the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Call the main script with a specific flag to focus on the dashboard
+"$SCRIPT_DIR/neurodock" --open-dashboard
