@@ -1,22 +1,102 @@
+from fastapi import APIRouter, HTTPException, WebSocket
 from typing import Dict, List, Any, Optional
 from uuid import UUID
 import logging
 import json
 import os
 import pathlib
-
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
-
-from neurodock.models.memory import MemoryCreate, MemoryType
+from neurodock.models.memory import MemoryType, MemoryCreate
 from neurodock.neo4j.memory_repository import MemoryRepository
-from neurodock.models.task import TaskCreate, TaskPriority
-from neurodock.neo4j.task_repository import TaskRepository
-from neurodock.services.context_selector import ContextSelector
-from neurodock.services.project_settings import ProjectSettings
+
+# FastAPI router for MCP endpoints (must be defined before use)
+router = APIRouter(prefix="/neuro-dock", tags=["mcp"])
+
+# --- MCP Tool Schema Discovery Endpoint ---
+@router.get("/tools")
+async def get_mcp_tools_schema():
+    """
+    Returns a list of all available MCP tools and their JSON schemas for discoverability (VSCode/Copilot compatibility).
+    """
+    # Example: This should be dynamically generated in a real system
+    return {
+        "tools": [
+            {
+                "name": "addMemory",
+                "endpoint": "/neuro-dock/memory",
+                "method": "POST",
+                "schema": "MemoryCreate",
+                "description": "Store a new memory"
+            },
+            {
+                "name": "addTask",
+                "endpoint": "/neuro-dock/task",
+                "method": "POST",
+                "schema": "TaskCreate",
+                "description": "Create a new task"
+            },
+            {
+                "name": "addEpisode",
+                "endpoint": "/neuro-dock/memory/episode",
+                "method": "POST",
+                "schema": "MemoryCreate",
+                "description": "Add an episodic/entity/fact memory"
+            },
+            {
+                "name": "searchNodes",
+                "endpoint": "/neuro-dock/memory/search-nodes",
+                "method": "POST",
+                "schema": "SearchNodesRequest",
+                "description": "Search nodes (memories/entities/facts)"
+            }
+            # Add all other tools here...
+        ]
+    }
+from neurodock.mcp_tools.memory_advanced_tool import handle_add_episode, handle_search_nodes
+# --- MCP Advanced Memory Tool Endpoint: Search Nodes ---
+@router.post("/memory/search-nodes")
+async def search_nodes(data: Dict[str, Any]):
+    """
+    Search nodes (memories/entities/facts) via the Model Context Protocol (MCP).
+    Uses the modular handler from mcp_tools.memory_advanced_tool.
+    """
+    result = await handle_search_nodes(data)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message"))
+    return result
+
+# Imports for FastAPI and typing
+from typing import Dict, List, Any, Optional
+from uuid import UUID
+import logging
+import json
+import os
+import pathlib
+from fastapi import APIRouter, HTTPException, WebSocket
+
+from neurodock.mcp_tools.memory_tool import handle_memory_store
+from neurodock.mcp_tools.memory_advanced_tool import handle_add_episode
+# --- MCP Advanced Memory Tool Endpoint ---
+@router.post("/memory/episode")
+async def add_episode(data: Dict[str, Any]):
+    """
+    Add an episode (memory) via the Model Context Protocol (MCP).
+    Uses the modular handler from mcp_tools.memory_advanced_tool.
+    """
+    result = await handle_add_episode(data)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message"))
+    return result
+from neurodock.mcp_tools.project_task_tool import handle_add_task
+from neurodock.mcp_tools.context_tool import handle_context_query
+
+from neurodock.models.memory import MemoryType
+from neurodock.models.task import TaskPriority
+from neurodock.mcp_tools.editor_context_tool import handle_editor_context
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# FastAPI router for MCP endpoints
 router = APIRouter(prefix="/neuro-dock", tags=["mcp"])
  
 # ... (rest of your code, including router definition and all imports) ...
@@ -304,144 +384,68 @@ async def get_mcp_config():
     }
 
 
+
+# --- MCP Memory Tool Endpoint ---
 @router.post("/memory")
 async def store_memory(data: Dict[str, Any]):
     """
-    Store a memory via the Model Context Protocol.
+    Store a memory via the Model Context Protocol (MCP).
+    Uses the modular handler from mcp_tools.memory_tool.
     """
-    result = await ModelContextProtocolService.handle_memory_store(data)
+    result = await handle_memory_store(data)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("message"))
     return result
 
 
+
+
+# --- MCP Project/Task Management Tool Endpoint ---
 @router.post("/task")
-async def create_task(data: Dict[str, Any]):
+async def add_task(data: Dict[str, Any]):
     """
-    Create a task via the Model Context Protocol.
+    Add a new task via the Model Context Protocol (MCP).
+    Uses the modular handler from mcp_tools.project_task_tool.
     """
-    result = await ModelContextProtocolService.handle_task_create(data)
+    result = await handle_add_task(data)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("message"))
     return result
 
 
+
+# --- MCP Context Tool Endpoint ---
 @router.post("/context")
 async def query_context(data: Dict[str, Any]):
     """
-    Query for relevant context via the Model Context Protocol.
+    Query for relevant context via the Model Context Protocol (MCP).
+    Uses the modular handler from mcp_tools.context_tool.
     """
-    result = await ModelContextProtocolService.handle_context_query(data)
+    result = await handle_context_query(data)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("message"))
     return result
+
 
 
 @router.post("/editor-context")
 async def get_editor_context(data: Dict[str, Any]):
     """
     Get relevant context specifically for VSCode editor integration.
+    Uses the modular handler from mcp_tools.editor_context_tool.
     """
-    try:
-        code_snippet = data.get("code", "")
-        file_path = data.get("filePath")
-        max_memories = int(data.get("maxMemories", 10))
-        project_id = data.get("projectId")
-        
-        # If no explicit project ID, try to infer from file path
-        if not project_id and file_path:
-            project_path = ModelContextProtocolService._infer_project_path(file_path)
-            if project_path:
-                settings = ProjectSettings.load_settings(project_path)
-                project_id = settings.get("project_id")
-                
-                # If isolation level is set to none, don't filter by project
-                if settings.get("memory_isolation_level") == "none":
-                    project_id = None
-        
-        # Use the specialized context selector for editor
-        memories = await ContextSelector.select_context_for_editor(
-            code_snippet=code_snippet,
-            file_path=file_path,
-            project_id=project_id,  # Pass project ID
-            max_memories=max_memories
-        )
-        
-        # Format response
-        context_items = []
-        for memory in memories:
-            context_items.append({
-                "id": str(memory.id),
-                "content": memory.content,
-                "type": memory.type.value,
-                "timestamp": memory.timestamp.isoformat(),
-                "source": memory.source,
-                "project_id": memory.project_id,
-                "relevance": "high" if memory.type in [MemoryType.CODE, MemoryType.DOCUMENTATION] else "medium"
-            })
-        
-        return {
-            "success": True,
-            "context": context_items,
-            "project_id": project_id,
-            "message": f"Found {len(context_items)} relevant items for editor context"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting editor context: {str(e)}")
-        return {
-            "success": False,
-            "message": f"Error getting editor context: {str(e)}"
-        }
+    result = await handle_editor_context(data)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message"))
+    return result
 
+
+from neurodock.mcp_tools.websocket_tool import handle_websocket
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for the Model Context Protocol.
-    Allows bidirectional communication for MCP clients.
+    Uses the modular handler from mcp_tools.websocket_tool.
     """
-    await websocket.accept()
-    
-    try:
-        while True:
-            # Receive and parse the message
-            data_text = await websocket.receive_text()
-            data = json.loads(data_text)
-            
-            # Extract the command and payload
-            command = data.get("command")
-            payload = data.get("payload", {})
-            request_id = data.get("requestId", "unknown")
-            
-            # Process the command
-            response = {"requestId": request_id}
-            
-            if command == "store_memory":
-                result = await ModelContextProtocolService.handle_memory_store(payload)
-                response.update(result)
-                
-            elif command == "create_task":
-                result = await ModelContextProtocolService.handle_task_create(payload)
-                response.update(result)
-                
-            elif command == "query_context":
-                result = await ModelContextProtocolService.handle_context_query(payload)
-                response.update(result)
-                
-            else:
-                response.update({
-                    "success": False,
-                    "message": f"Unknown command: {command}"
-                })
-            
-            # Send the response
-            await websocket.send_json(response)
-            
-    except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected")
-    except Exception as e:
-        logger.error(f"Error in WebSocket connection: {str(e)}")
-        if websocket.client_state != websocket.client_state.DISCONNECTED:
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-            await websocket.send_json(response)
+    await handle_websocket(websocket)

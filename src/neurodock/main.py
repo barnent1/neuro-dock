@@ -57,6 +57,15 @@ app.mount("/static", StaticFiles(directory=pathlib.Path(__file__).parent / "stat
 app.include_router(memory.router)
 app.include_router(task.router)
 app.include_router(mcp.router)
+
+# Add a root /neuro-dock endpoint directly to the app for VS Code MCP compatibility
+from fastapi.responses import JSONResponse
+from neurodock.routes.mcp import get_mcp_config
+
+@app.api_route("/neuro-dock", methods=["GET", "POST"])
+@app.api_route("/neuro-dock/", methods=["GET", "POST"])
+async def neuro_dock_root():
+    return await get_mcp_config()
 app.include_router(api.router)  # API for UI
 app.include_router(ui.router, prefix="/ui")  # UI routes
 

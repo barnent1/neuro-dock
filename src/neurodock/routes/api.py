@@ -1,3 +1,43 @@
+# --- REST Tool Schema Discovery Endpoint ---
+@router.get("/tools")
+async def get_rest_tools_schema():
+    """
+    Returns a list of all available REST API tools and their JSON schemas for discoverability (VSCode/Copilot compatibility).
+    """
+    # Example: This should be dynamically generated in a real system
+    return {
+        "tools": [
+            {
+                "name": "getMemories",
+                "endpoint": "/api/memories",
+                "method": "GET",
+                "schema": "MemoryQuery",
+                "description": "Get memories with optional search filter"
+            },
+            {
+                "name": "createMemory",
+                "endpoint": "/api/memories",
+                "method": "POST",
+                "schema": "MemoryCreate",
+                "description": "Create a new memory"
+            },
+            {
+                "name": "getMemory",
+                "endpoint": "/api/memories/{memory_id}",
+                "method": "GET",
+                "schema": "MemoryNode",
+                "description": "Get a memory by ID"
+            },
+            {
+                "name": "deleteMemory",
+                "endpoint": "/api/memories/{memory_id}",
+                "method": "DELETE",
+                "schema": "MemoryNode",
+                "description": "Delete a memory by ID"
+            }
+            # Add all other REST tools here...
+        ]
+    }
 from typing import List, Optional
 from uuid import UUID
 

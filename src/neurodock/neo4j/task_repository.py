@@ -59,8 +59,8 @@ class TaskRepository:
         
         try:
             async with neo4j_client.get_session() as session:
-                result = await session.run(query, params)
-                record = await result.single()
+                result = session.run(query, params)
+                record = result.single()
                 if not record:
                     TaskRepository.logger.error("Failed to create task: no record returned from Neo4j.")
                     raise Exception("Failed to create task node.")
@@ -72,7 +72,7 @@ class TaskRepository:
                     MATCH (child:TaskNode {id: $child_id})
                     CREATE (parent)-[r:HAS_SUBTASK]->(child)
                     """
-                    await session.run(rel_query, {
+                    session.run(rel_query, {
                         "parent_id": str(task.parent_id),
                         "child_id": str(task_id)
                     })
@@ -87,7 +87,7 @@ class TaskRepository:
                     user: $user
                 })
                 """
-                await session.run(event_query, {
+                session.run(event_query, {
                     "id": str(uuid4()),
                     "task_id": str(task_id),
                     "event_type": "task_created",
@@ -407,9 +407,9 @@ class TaskRepository:
         
         try:
             async with neo4j_client.get_session() as session:
-                result = await session.run(query, params)
+                result = session.run(query, params)
                 tasks = []
-                async for record in result:
+                for record in result:
                     node_data = record["t"]
                     tasks.append(
                         TaskNode(

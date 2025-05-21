@@ -43,10 +43,9 @@ class MemoryRepository:
         }
         
         async with neo4j_client.get_session() as session:
-            result = await session.run(query, params)
-            record = await result.single()
+            result = session.run(query, params)
+            record = result.single()
             node_data = record["m"]
-            
             return MemoryNode(
                 id=UUID(node_data["id"]),
                 content=node_data["content"],
@@ -69,12 +68,10 @@ class MemoryRepository:
         params = {"id": str(memory_id)}
         
         async with neo4j_client.get_session() as session:
-            result = await session.run(query, params)
-            record = await result.single()
-            
+            result = session.run(query, params)
+            record = result.single()
             if not record:
                 return None
-                
             node_data = record["m"]
             return MemoryNode(
                 id=UUID(node_data["id"]),
@@ -174,9 +171,9 @@ class MemoryRepository:
             params["project_id"] = project_id
         
         async with neo4j_client.get_session() as session:
-            result = await session.run(query, params)
+            result = session.run(query, params)
             memories = []
-            async for record in result:
+            for record in result:
                 node_data = record["related"]
                 memories.append(
                     MemoryNode(
@@ -251,9 +248,9 @@ class MemoryRepository:
         
         async with neo4j_client.get_session() as session:
             try:
-                result = await session.run(query, params)
+                result = session.run(query, params)
                 memories = []
-                async for record in result:
+                for record in result:
                     node_data = record["m"]
                     memories.append(
                         MemoryNode(
@@ -327,9 +324,8 @@ class MemoryRepository:
         params = {"project_id": project_id}
         
         async with neo4j_client.get_session() as session:
-            result = await session.run(query, params)
-            record = await result.single()
-            
+            result = session.run(query, params)
+            record = result.single()
             return record["deleted_count"] > 0
 
     @staticmethod
@@ -358,9 +354,9 @@ class MemoryRepository:
         params = {"ids": id_strings}
         
         async with neo4j_client.get_session() as session:
-            result = await session.run(query, params)
+            result = session.run(query, params)
             memories = []
-            async for record in result:
+            for record in result:
                 node_data = record["m"]
                 memories.append(
                     MemoryNode(
