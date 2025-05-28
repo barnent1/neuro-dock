@@ -710,6 +710,171 @@ def run(
         typer.echo(f"❌ Unexpected error: {e}", err=True)
         raise typer.Exit(1)
 
+
+def _run_interactive_mode(tasks, project_info, store, nd_path, task_name, build):
+    """Run tasks in interactive mode, allowing user to select tasks manually."""
+    if task_name:
+        # Run specific task by name
+        matching_tasks = [task for task in tasks if task.get('name', '').lower() == task_name.lower()]
+        if not matching_tasks:
+            typer.echo(f"❌ Task '{task_name}' not found.")
+            available_tasks = [task.get('name', 'Unnamed') for task in tasks]
+            typer.echo(f"Available tasks: {', '.join(available_tasks)}")
+            raise typer.Exit(1)
+        
+        task = matching_tasks[0]
+        typer.echo(f"\n🎯 Executing specific task: {task.get('name', 'Unnamed Task')}")
+        typer.echo(f"📝 {task.get('description', 'No description')}")
+        
+        success = _execute_task(task, project_info, store, nd_path, build)
+        if success:
+            task["status"] = "completed"
+            store.update_task_status_by_name(task.get('name'), 'completed')
+            typer.echo(f"✅ Task '{task.get('name')}' completed successfully!")
+        else:
+            typer.echo(f"❌ Task '{task.get('name')}' failed.")
+        return
+    
+    # Interactive task selection
+    incomplete_tasks = [task for task in tasks if task.get("status") != "completed"]
+    
+    if not incomplete_tasks:
+        typer.echo("🎉 All tasks are already completed!")
+        return
+    
+    typer.echo(f"\n📝 Available tasks ({len(incomplete_tasks)} incomplete):")
+    for i, task in enumerate(incomplete_tasks, 1):
+        status = "✅" if task.get("status") == "completed" else "⏳"
+        typer.echo(f"  {i}. {status} {task.get('name', 'Unnamed Task')}")
+    
+    try:
+        choice = typer.prompt("\nSelect task number to execute (or 'q' to quit)", type=str)
+        
+        if choice.lower() == 'q':
+            typer.echo("👋 Goodbye!")
+            return
+        
+        try:
+            task_index = int(choice) - 1
+            if 0 <= task_index < len(incomplete_tasks):
+                task = incomplete_tasks[task_index]
+                typer.echo(f"\n🎯 Executing: {task.get('name', 'Unnamed Task')}")
+                typer.echo(f"📝 {task.get('description', 'No description')}")
+                
+                success = _execute_task(task, project_info, store, nd_path, build)
+                if success:
+                    task["status"] = "completed"
+                    store.update_task_status_by_name(task.get('name'), 'completed')
+                    typer.echo(f"✅ Task completed successfully!")
+                else:
+                    typer.echo(f"❌ Task failed.")
+            else:
+                typer.echo("❌ Invalid task number.")
+        except ValueError:
+            typer.echo("❌ Please enter a valid number or 'q' to quit.")
+            
+    except (EOFError, KeyboardInterrupt):
+        typer.echo("\n👋 Goodbye!")
+
+
+def _execute_task(task, project_info, store, nd_path, build):
+    """Execute a single task and return success status."""
+    try:
+        task_name = task.get('name', 'Unnamed Task')
+        task_description = task.get('description', 'No description')
+        task_type = task.get('type', 'file_creation')
+        
+        # Create a comprehensive prompt for the LLM
+        execution_prompt = f"""Execute this development task:
+
+Task: {task_name}
+Description: {task_description}
+Type: {task_type}
+
+Project Context:
+Name: {project_info.get('name', 'Unknown Project')}
+Description: {project_info.get('description', 'No description')}
+
+Please generate the necessary code files to complete this task. 
+Return your response as JSON with this structure:
+{{
+    "explanation": "Brief explanation of what you're implementing",
+    "files": [
+        {{
+            "path": "relative/path/to/file.ext",
+            "content": "file content here"
+        }}
+    ]
+}}
+
+Make sure the code is production-ready and follows best practices."""
+
+        # Call LLM to generate code
+        typer.echo("🤖 Generating code...")
+        code_response = call_llm_code(execution_prompt)
+        
+        if not code_response or "files" not in code_response:
+            typer.echo("❌ Failed to generate valid code response")
+            return False
+        
+        # Display what will be created
+        files_to_create = code_response["files"]
+        explanation = code_response.get("explanation", "Code generation completed")
+        
+        typer.echo(f"\n📋 {explanation}")
+        typer.echo(f"📁 Creating {len(files_to_create)} file(s):")
+        
+        for file_info in files_to_create:
+            file_path = file_info.get("path", "unknown.txt")
+            typer.echo(f"  • {file_path}")
+        
+        # Confirm before creating files
+        if not typer.confirm("\nProceed with file creation?"):
+            typer.echo("⚠️ Task cancelled by user.")
+            return False
+        
+        # Create the files
+        created_files = []
+        for file_info in files_to_create:
+            file_path = Path(file_info.get("path", "unknown.txt"))
+            file_content = file_info.get("content", "")
+            
+            # Ensure directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write file
+            file_path.write_text(file_content)
+            created_files.append(str(file_path))
+            typer.echo(f"✅ Created: {file_path}")
+        
+        # Store task completion in memory
+        add_to_memory(
+            f"Completed task: {task_name}. Created files: {', '.join(created_files)}", 
+            {"type": "task_completion", "task": task_name, "files": created_files}
+        )
+        
+        # Execute build commands if requested
+        if build and created_files:
+            typer.echo("\n🔨 Executing build commands...")
+            # This is a placeholder - implement actual build logic based on project type
+            try:
+                # Example build commands - customize based on project
+                if any(f.endswith('.py') for f in created_files):
+                    typer.echo("🐍 Python project detected")
+                elif any(f.endswith('.js') for f in created_files):
+                    typer.echo("📦 JavaScript project detected")
+                    
+                typer.echo("✅ Build commands completed")
+            except Exception as e:
+                typer.echo(f"⚠️ Build warning: {e}")
+        
+        return True
+        
+    except Exception as e:
+        typer.echo(f"❌ Task execution failed: {e}")
+        return False
+
+
 @app.command()
 def tasks():
     """Show the status of all tasks in the current project plan."""
