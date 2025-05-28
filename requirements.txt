@@ -1,0 +1,10 @@
+typer
+python-dotenv
+qdrant-client
+sentence-transformers
+openai
+langchain
+requests
+PyYAML
+psycopg2-binary
+neo4j

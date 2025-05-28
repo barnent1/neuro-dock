@@ -1,0 +1,24 @@
+[project]
+name = "neuro-dock"
+version = "0.1.0"
+description = "AI-powered CLI for project planning and code generation"
+authors = [{ name = "Glen F. Barnhardt" }]
+dependencies = [
+    "typer[all]",
+    "openai",
+    "langchain",
+    "python-dotenv",
+    "qdrant-client"
+]
+
+[project.scripts]
+neuro-dock = "neurodock.cli:main"
+nd = "neurodock.cli:main"
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["neurodock"]
+package-dir = {"" = "src"}
