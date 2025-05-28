@@ -4,6 +4,7 @@ import os
 import json
 import yaml
 import subprocess
+import shutil
 from datetime import datetime
 from pathlib import Path
 import typer
@@ -73,9 +74,40 @@ app_root: .
 framework: auto
 """
     (nd_path / "config.yaml").write_text(config_content)
+    
+    # Copy .neuro-dock.md template for Agent 1 to the project root
+    try:
+        import neurodock
+        # Start from the package directory and go up to find the repo root
+        package_dir = Path(neurodock.__file__).parent
+        repo_root = package_dir.parent.parent  # Go up from src/neurodock to repo root
+        source_template = repo_root / ".neuro-dock.md"
+        
+        # If not found in repo root, try current directory
+        if not source_template.exists():
+            source_template = Path.cwd() / ".neuro-dock.md"
+            
+        # If still not found, try the package directory
+        if not source_template.exists():
+            source_template = package_dir / ".neuro-dock.md"
+        
+        if source_template.exists():
+            target_template = root / ".neuro-dock.md"
+            shutil.copy2(source_template, target_template)
+            typer.echo("✅ Agent 1 configuration template copied")
+        else:
+            typer.echo("⚠️  Agent 1 template not found - you may need to create .neuro-dock.md manually")
+            typer.echo(f"   Searched: {repo_root / '.neuro-dock.md'}, {Path.cwd() / '.neuro-dock.md'}")
+    except Exception as e:
+        typer.echo(f"⚠️  Could not copy Agent 1 template: {e}")
 
     typer.echo(f"✅ Project initialized in: {root}")
     typer.echo("🚀 Ready to start! Try: nd discuss")
+    typer.echo()
+    typer.echo("📚 Documentation:")
+    typer.echo("   • Project guide: .neuro-dock.md (copied to your project)")
+    typer.echo("   • Full docs: https://github.com/barnent1/neuro-dock/tree/main/documentation")
+    typer.echo("   • API reference: https://github.com/barnent1/neuro-dock/blob/main/documentation/api/commands.md")
 
 @app.command()
 def status():

@@ -393,7 +393,64 @@ neurodock memory export --include conversations conversations.json
 neurodock memory cleanup --older-than 90d --dry-run
 ```
 
-### 4. Project Management Commands
+### 4. Project Initialization Commands
+
+#### `init` - Initialize Current Directory
+
+Initialize NeuroDock in the current project directory, setting up essential configuration and copying the Agent 1 template.
+
+**Syntax:**
+```bash
+neurodock init
+```
+
+**Features:**
+- **Database Verification**: Confirms PostgreSQL connection before proceeding
+- **Project Structure**: Creates `.neuro-dock/` directory with essential configuration
+- **Agent 1 Template**: Copies `.neuro-dock.md` template to project root for Agent 1 access
+- **Smart Template Discovery**: Searches multiple locations for template file (repo root, current directory, package directory)
+- **Documentation Links**: Provides helpful links to documentation resources
+
+**File Structure Created:**
+```
+.neuro-dock/
+├── config.yaml         # Project configuration
+└── ...                 # Additional configuration files
+
+.neuro-dock.md          # Agent 1 configuration template (copied to project root)
+```
+
+**Output Messages:**
+- Database connection verification status
+- Template copying confirmation
+- Documentation links for further reference
+- Next step suggestions
+
+**Examples:**
+```bash
+# Initialize current directory
+cd my-project
+neurodock init
+
+# Expected output:
+✅ Database connection verified
+✅ Agent 1 configuration template copied
+✅ Project initialized in: /path/to/my-project
+🚀 Ready to start! Try: nd discuss
+
+📚 Documentation:
+   • Project guide: .neuro-dock.md (copied to your project)
+   • Full docs: https://github.com/barnent1/neuro-dock/tree/main/documentation
+   • API reference: https://github.com/barnent1/neuro-dock/blob/main/documentation/api/commands.md
+```
+
+**Error Handling:**
+- Prevents initialization if `.neuro-dock` already exists
+- Displays helpful error messages for database connection issues
+- Provides fallback guidance when template file cannot be found
+- Suggests running `nd setup` for database configuration problems
+
+### 5. Project Management Commands
 
 #### `project` - Project Operations
 
@@ -450,7 +507,7 @@ neurodock project config database.type postgresql
 neurodock project status
 ```
 
-### 5. System Commands
+### 6. System Commands
 
 #### `system` - System Operations
 
