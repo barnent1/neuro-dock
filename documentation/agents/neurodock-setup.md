@@ -1,14 +1,14 @@
-# Agent 2 Integration Guide
+# NeuroDock Integration Guide
 
 ## Overview
 
-Agent 2 is NeuroDock's specialized integration and automation agent that works alongside Agent 1 to handle technical implementation, testing, and system integration tasks.
+NeuroDock is NeuroDock's specialized integration and automation agent that works alongside Navigator to handle technical implementation, testing, and system integration tasks.
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐
-│     Agent 1     │    │     Agent 2     │
+│    Navigator    │    │    NeuroDock    │
 │  (Conversation) │◄──►│ (Implementation)│
 │                 │    │                 │
 │ • User Dialogue │    │ • Code Execution│
@@ -32,7 +32,7 @@ Agent 2 is NeuroDock's specialized integration and automation agent that works a
 ## Key Features
 
 ### 1. **Automated Implementation**
-- Executes code changes based on Agent 1's requirements
+- Executes code changes based on Navigator's requirements
 - Handles file creation, modification, and deletion
 - Manages dependency installation and configuration
 
@@ -55,9 +55,9 @@ Agent 2 is NeuroDock's specialized integration and automation agent that works a
 
 ### Prerequisites
 
-Before setting up Agent 2, ensure:
+Before setting up NeuroDock, ensure:
 
-1. **Agent 1 is configured** and functional
+1. **Navigator is configured** and functional
 2. **Shared memory system** is operational
 3. **Required dependencies** are installed:
    ```bash
@@ -66,7 +66,7 @@ Before setting up Agent 2, ensure:
 
 ### Configuration
 
-Agent 2 shares the same environment configuration as Agent 1:
+NeuroDock shares the same environment configuration as Navigator:
 
 ```bash
 # Copy environment template
@@ -82,20 +82,20 @@ NEO4J_URI=your_neo4j_connection
 
 ### Integration Points
 
-Agent 2 integrates through several mechanisms:
+NeuroDock integrates through several mechanisms:
 
 1. **Shared Memory Access**
-   - Reads conversation context from Agent 1
+   - Reads conversation context from Navigator
    - Writes implementation results back to memory
    - Maintains synchronization between agents
 
 2. **CLI Interface**
    ```bash
-   # Agent 2 can be invoked directly
-   python -m src.agent2.main --task implementation --context-id 12345
+   # NeuroDock can be invoked directly
+   python -m src.neurodock.main --task implementation --context-id 12345
    
-   # Or through Agent 1 coordination
-   # Agent 1 automatically delegates to Agent 2 when needed
+   # Or through Navigator coordination
+   # Navigator automatically delegates to NeuroDock when needed
    ```
 
 3. **File System Integration**
@@ -107,7 +107,7 @@ Agent 2 integrates through several mechanisms:
 
 ### 1. **Automatic Delegation**
 
-Agent 1 automatically delegates to Agent 2 for:
+Navigator automatically delegates to NeuroDock for:
 - Code implementation tasks
 - Testing and validation
 - System configuration changes
@@ -116,36 +116,36 @@ Agent 1 automatically delegates to Agent 2 for:
 Example conversation flow:
 ```
 User: "Implement the user authentication system"
-Agent 1: "I'll analyze the requirements and coordinate implementation"
-         → Delegates to Agent 2
-Agent 2: "Implementing authentication system..."
+Navigator: "I'll analyze the requirements and coordinate implementation"
+         → Delegates to NeuroDock
+NeuroDock: "Implementing authentication system..."
          → Executes code changes
          → Runs tests
-         → Reports back to Agent 1
-Agent 1: "Authentication system implemented successfully. Here's what was done..."
+         → Reports back to Navigator
+Navigator: "Authentication system implemented successfully. Here's what was done..."
 ```
 
 ### 2. **Direct Invocation**
 
-For advanced users, Agent 2 can be invoked directly:
+For advanced users, NeuroDock can be invoked directly:
 
 ```bash
 # Execute specific implementation
-python -m src.agent2.main --implement feature_spec.json
+python -m src.neurodock.main --implement feature_spec.json
 
 # Run validation suite
-python -m src.agent2.main --validate --target user_auth
+python -m src.neurodock.main --validate --target user_auth
 
 # Integrate external system
-python -m src.agent2.main --integrate --system payment_gateway
+python -m src.neurodock.main --integrate --system payment_gateway
 ```
 
 ### 3. **Batch Processing**
 
-Agent 2 can handle multiple tasks in sequence:
+NeuroDock can handle multiple tasks in sequence:
 
 ```bash
-python -m src.agent2.main --batch tasks.json
+python -m src.neurodock.main --batch tasks.json
 ```
 
 Where `tasks.json` contains:
@@ -175,10 +175,10 @@ Where `tasks.json` contains:
 
 ### Shared Context
 
-Agent 2 accesses and updates shared memory:
+NeuroDock accesses and updates shared memory:
 
 ```python
-# Read context from Agent 1
+# Read context from Navigator
 conversation_context = memory_system.get_conversation_context(session_id)
 
 # Execute implementation

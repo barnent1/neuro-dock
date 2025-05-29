@@ -92,7 +92,31 @@ class Neo4JMemoryStore:
                 CREATE INDEX memory_created IF NOT EXISTS
                 FOR (m:Memory) ON (m.created_at)
             """)
+            
+            # Migration: Add missing content property to existing Memory nodes
+            self._migrate_missing_content_property()
     
+    def _migrate_missing_content_property(self):
+        """Migrate existing Memory nodes that are missing the content property."""
+        if not self.driver:
+            return
+            
+        with self.driver.session() as session:
+            try:
+                # Find Memory nodes without content property and add default value
+                result = session.run("""
+                    MATCH (m:Memory)
+                    WHERE m.content IS NULL
+                    SET m.content = ''
+                    RETURN count(m) as updated_count
+                """)
+                
+                record = result.single()
+                if record and record["updated_count"] > 0:
+                    self.logger.info(f"Migrated {record['updated_count']} Memory nodes with missing content property")
+                    
+            except Exception as e:
+                self.logger.warning(f"Migration warning (non-critical): {e}")
     def add_memory(self, content: str, memory_type: str, metadata: Optional[Dict[str, Any]] = None, 
                    project_path: Optional[str] = None) -> Optional[str]:
         """
@@ -440,6 +464,48 @@ class Neo4JMemoryStore:
         """Close the Neo4J driver connection."""
         if self.driver:
             self.driver.close()
+    
+    def get_relationships(self, project_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get all relationships in the memory graph for a project.
+        
+        Args:
+            project_path: Project path to filter by
+            
+        Returns:
+            List of relationship dictionaries
+        """
+        if not self.driver:
+            return []
+            
+        if not project_path:
+            project_path = str(Path.cwd())
+            
+        with self.driver.session() as session:
+            try:
+                result = session.run("""
+                    MATCH (from:Memory {project_path: $project_path})-[r]->(to:Memory {project_path: $project_path})
+                    RETURN from.id as from_node, type(r) as type, to.id as to_node,
+                           from.content as from_content, to.content as to_content
+                    ORDER BY from.created_at DESC
+                """, {"project_path": project_path})
+                
+                relationships = []
+                for record in result:
+                    relationship = {
+                        "from_node": record["from_node"],
+                        "type": record["type"],
+                        "to_node": record["to_node"],
+                        "from_content": record["from_content"][:50] + "..." if len(record["from_content"]) > 50 else record["from_content"],
+                        "to_content": record["to_content"][:50] + "..." if len(record["to_content"]) > 50 else record["to_content"]
+                    }
+                    relationships.append(relationship)
+                    
+                return relationships
+                
+            except Exception as e:
+                self.logger.error(f"Failed to get relationships: {e}")
+                return []
 
 # Global instance
 _neo4j_store = None
@@ -451,6 +517,9 @@ def get_neo4j_store() -> Optional[Neo4JMemoryStore]:
     if _neo4j_store is None and NEO4J_AVAILABLE:
         # Try to get connection info from environment or config
         import os
+        from ..config import config
+        
+        # Use the centralized config to ensure .env is loaded
         uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         user = os.getenv("NEO4J_USER", "neo4j")
         password = os.getenv("NEO4J_PASSWORD", "password")

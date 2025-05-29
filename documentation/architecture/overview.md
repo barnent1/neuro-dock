@@ -12,7 +12,7 @@ NeuroDock implements a sophisticated dual-agent architecture with advanced memor
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
-│  │  Developer  │◄──►│   Agent 1   │◄──►│   Agent 2   │         │
+│  │  Developer  │◄──►│  Navigator  │◄──►│  NeuroDock  │         │
 │  │    (Chat)   │    │(Conversation│    │  (Any LLM)  │         │
 │  │             │    │Facilitator) │    │             │         │
 │  └─────────────┘    └─────────────┘    └─────────────┘         │
@@ -34,7 +34,7 @@ NeuroDock implements a sophisticated dual-agent architecture with advanced memor
 
 ## Agent Architecture
 
-### Agent 1 (Conversational Facilitator)
+### Navigator (Conversational Facilitator)
 
 **Purpose**: Guides developers through structured Agile conversations
 
@@ -42,8 +42,8 @@ NeuroDock implements a sophisticated dual-agent architecture with advanced memor
 - Read and understand system capabilities via `.neuro-dock.md`
 - Facilitate structured conversations following Agile methodology
 - Parse developer inputs and maintain conversation state
-- Execute keyword-triggered commands to engage Agent 2
-- Relay Agent 2 results back to developer
+- Execute keyword-triggered commands to engage NeuroDock
+- Relay NeuroDock results back to developer
 - Store all conversation context in memory systems
 
 **Implementation**: `src/neurodock/conversational_agent.py`
@@ -69,18 +69,18 @@ NeuroDock implements a sophisticated dual-agent architecture with advanced memor
 - `"proceed to deployment"` → Execute `nd deploy`
 - `"proceed to retrospective"` → Execute `nd retrospective`
 
-### Agent 2 (Task Executor)
+### NeuroDock (Task Executor)
 
 **Purpose**: Execute technical development tasks with rich context
 
 **Key Characteristics**:
 - Can be any LLM (Claude, OpenAI, Ollama, local models)
-- Receives rich context from Agent 1 conversations
+- Receives rich context from Navigator conversations
 - Works through CLI commands with contextual reminders
 - Provides feedback through the reminder system
 
 **Context Sources**:
-- Full conversation history from Agent 1
+- Full conversation history from Navigator
 - Project requirements and constraints
 - Previous task completion history
 - Technical decisions and preferences
@@ -127,14 +127,14 @@ NeuroDock implements a sophisticated dual-agent architecture with advanced memor
 
 ### Command Categories
 
-**Conversational Commands** (Agent 1):
-- `nd begin` - Start Agent 1 conversation
+**Conversational Commands** (Navigator):
+- `nd begin` - Start Navigator conversation
 - `nd continue` - Resume conversation
 - `nd conversation-status` - View conversation state
 - `nd explain` - System explanations
 - `nd guide-me` - Process guidance
 
-**Development Commands** (Agent 2):
+**Development Commands** (NeuroDock):
 - `nd init` - Project initialization
 - `nd discuss` - Requirements gathering
 - `nd sprint-plan` - Task breakdown

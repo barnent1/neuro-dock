@@ -2,7 +2,7 @@
 """
 Agent Memory Reminder System for NeuroDock
 
-This module provides contextual reminders from Agent 2 (Memory Agent) to Agent 1
+This module provides contextual reminders from NeuroDock (Memory Agent) to Navigator
 after command completion, helping maintain focus and context awareness throughout
 the development workflow.
 """
@@ -19,7 +19,7 @@ from .neo4j_store import get_neo4j_store, get_agent_reminders as get_neo4j_remin
 
 @dataclass
 class AgentReminder:
-    """Represents a contextual reminder from Agent 2 to Agent 1."""
+    """Represents a contextual reminder from NeuroDock to Navigator."""
     message: str
     priority: str  # "high", "medium", "low"
     category: str  # "task", "memory", "context", "warning"
@@ -371,7 +371,7 @@ class MemoryReminderSystem:
         if not reminders:
             return ""
             
-        lines = ["\n🧠 Agent 2 Memory Reminders:"]
+        lines = ["\n🧠 NeuroDock Memory Reminders:"]
         lines.append("─" * 50)
         
         for i, reminder in enumerate(reminders, 1):

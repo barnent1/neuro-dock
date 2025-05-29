@@ -2,7 +2,7 @@
 
 ## Overview
 
-NeuroDock's memory system is the central nervous system that enables seamless communication and context sharing between Agent 1 (conversation) and Agent 2 (implementation). It provides persistent storage, real-time synchronization, and intelligent context management.
+NeuroDock's memory system is the central nervous system that enables seamless communication and context sharing between Navigator (conversation) and NeuroDock (implementation). It provides persistent storage, real-time synchronization, and intelligent context management.
 
 ## Architecture Components
 
@@ -23,7 +23,7 @@ NeuroDock's memory system is the central nervous system that enables seamless co
     ┌─────────────────────────┼─────────────────────────┐
     │                         │                         │
 ┌───▼───┐              ┌─────▼──────┐           ┌──────▼──────┐
-│Agent 1│              │ Memory API │           │   Agent 2   │
+│Navigator│              │ Memory API │           │   NeuroDock   │
 │       │◄────────────►│            │◄─────────►│             │
 │ Chat  │              │ • Store    │           │ Implement   │
 │ Plan  │              │ • Retrieve │           │ Test        │
@@ -55,7 +55,7 @@ CREATE TABLE sessions (
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
-    agent_type VARCHAR(20) NOT NULL, -- 'agent1' or 'agent2'
+    agent_type VARCHAR(20) NOT NULL, -- 'navigator' or 'neurodock'
     role VARCHAR(20) NOT NULL, -- 'user', 'assistant', 'system'
     content TEXT NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -67,7 +67,7 @@ CREATE TABLE messages (
 CREATE TABLE implementation_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
-    agent2_task_id VARCHAR(255) NOT NULL,
+    neurodock_task_id VARCHAR(255) NOT NULL,
     task_type VARCHAR(100) NOT NULL,
     status VARCHAR(50) NOT NULL,
     result_data JSONB,
@@ -315,11 +315,11 @@ class MemoryManager:
 
 ### Agent Integration Interfaces
 
-#### Agent 1 Integration
+#### Navigator Integration
 
 ```python
-# src/memory/agent1_interface.py
-class Agent1MemoryInterface:
+# src/memory/navigator_interface.py
+class NavigatorMemoryInterface:
     def __init__(self, memory_manager):
         self.memory = memory_manager
     
@@ -328,7 +328,7 @@ class Agent1MemoryInterface:
         message = Message(
             role="user",
             content=content,
-            agent_type="agent1",
+            agent_type="navigator",
             metadata={"context": context}
         )
         await self.memory.store_conversation_turn(session_id, [message])
@@ -338,7 +338,7 @@ class Agent1MemoryInterface:
         message = Message(
             role="assistant",
             content=response,
-            agent_type="agent1",
+            agent_type="navigator",
             metadata={"analysis": analysis}
         )
         await self.memory.store_conversation_turn(session_id, [message])
@@ -359,11 +359,11 @@ class Agent1MemoryInterface:
         return results
 ```
 
-#### Agent 2 Integration
+#### NeuroDock Integration
 
 ```python
-# src/memory/agent2_interface.py
-class Agent2MemoryInterface:
+# src/memory/neurodock_interface.py
+class NeuroDockMemoryInterface:
     def __init__(self, memory_manager):
         self.memory = memory_manager
     

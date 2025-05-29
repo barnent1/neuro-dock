@@ -1,10 +1,10 @@
-# Agent 1 Conversation System Guide
+# Navigator Conversation System Guide
 
 ## Overview
 
-Agent 1 is NeuroDock's intelligent conversation facilitator that guides developers through structured Agile development processes. Unlike traditional development tools, Agent 1 focuses on comprehensive conversations before any code execution, ensuring clear understanding and proper planning.
+Navigator is NeuroDock's intelligent conversation facilitator that guides developers through structured Agile development processes. Unlike traditional development tools, Navigator focuses on comprehensive conversations before any code execution, ensuring clear understanding and proper planning.
 
-## How Agent 1 Works
+## How Navigator Works
 
 ### Core Principles
 
@@ -17,9 +17,9 @@ Agent 1 is NeuroDock's intelligent conversation facilitator that guides develope
 ### Agent Communication Architecture
 
 ```
-Developer ←──────────────→ Agent 1 ←──────────────→ Agent 2
-(Chat Window)            (Conversation           (Any LLM via
-                         Facilitator)            CLI/Terminal)
+Developer ←──────────────→ Navigator ←──────────────→ NeuroDock
+(Chat Window)            (Conversation               (Any LLM via
+                         Facilitator)                CLI/Terminal)
      │                        │                        │
      │                        ▼                        │
      │              ┌─────────────────┐                │

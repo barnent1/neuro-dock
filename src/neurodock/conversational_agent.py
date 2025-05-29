@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Conversational Agent 1 System for NeuroDock
+Navigator System for NeuroDock
 
-This module implements Agent 1 as an intelligent conversational partner that guides
+This module implements Navigator as an intelligent conversational partner that guides
 developers through the complete Agile development process, facilitating communication
-with Agent 2 and ensuring comprehensive memory storage.
+with NeuroDock and ensuring comprehensive memory storage.
 """
 
 import os
@@ -38,7 +38,7 @@ AGILE_SCRIPT = {
         "description": "Project Introduction and Vision Gathering",
         "steps": {
             "introduction": {
-                "agent_prompt": "Introduce system capabilities and your role as Agent 1",
+                "agent_prompt": "Introduce system capabilities and your role as Navigator",
                 "key_questions": ["What is your project vision?", "What problem are you solving?"],
                 "next_step": "vision_clarification"
             },
@@ -54,12 +54,12 @@ AGILE_SCRIPT = {
         "description": "Detailed Requirements Discussion and Clarification",
         "steps": {
             "requirements_introduction": {
-                "agent_prompt": "Explain the requirements gathering process and engage Agent 2",
+                "agent_prompt": "Explain the requirements gathering process and engage NeuroDock",
                 "key_questions": ["Are you ready to dive deep into requirements?"],
-                "next_step": "agent2_discussion"
+                "next_step": "neurodock_discussion"
             },
-            "agent2_discussion": {
-                "agent_prompt": "Facilitate discussion with Agent 2 for detailed requirements",
+            "neurodock_discussion": {
+                "agent_prompt": "Facilitate discussion with NeuroDock for detailed requirements",
                 "command_to_run": "nd discuss",
                 "keyword_trigger": "proceed to planning",
                 "next_phase": "sprint_planning"
@@ -177,7 +177,7 @@ AGILE_SCRIPT = {
 
 class ConversationalAgent:
     """
-    Agent 1: Conversational Development Partner
+    Navigator: Conversational Development Partner
     
     Facilitates comprehensive conversations with developers throughout
     the complete Agile development lifecycle.
@@ -230,10 +230,13 @@ class ConversationalAgent:
                 if "next_phase" in current_step_config:
                     self._advance_to_next_phase(current_step_config["next_phase"])
                 elif "command_to_run" in current_step_config:
-                    self._execute_agent2_command(current_step_config["command_to_run"])
-    def _execute_agent2_command(self, command: str) -> Dict[str, Any]:
-        """Execute a neuro-dock command to communicate with Agent 2."""
-        self._add_to_conversation_history("Agent1", f"Executing command: {command}")
+                    self._execute_neurodock_command(current_step_config["command_to_run"])
+                return True
+        return False
+                
+    def _execute_neurodock_command(self, command: str) -> Dict[str, Any]:
+        """Execute a neuro-dock command to communicate with NeuroDock."""
+        self._add_to_conversation_history("Navigator", f"Executing command: {command}")
         
         try:
             # Run the command in the project directory
@@ -254,8 +257,8 @@ class ConversationalAgent:
             }
             
             # Store command result in memory
-            add_to_memory(f"Agent 2 command executed: {command}", {
-                "type": "agent2_command",
+            add_to_memory(f"NeuroDock command executed: {command}", {
+                "type": "neurodock_command",
                 "command": command,
                 "success": command_result["success"],
                 "phase": self.conversation_state.phase,
@@ -272,11 +275,11 @@ class ConversationalAgent:
     def suggest_memory_storage(self, important_idea: str) -> str:
         """Suggest storing an important idea in memory."""
         memory_suggestion = f"""
-🧠 Agent 1: That's an important point! Let me store this in our memory system:
+🧠 Navigator: That's an important point! Let me store this in our memory system:
 
 "{important_idea}"
 
-This will help Agent 2 provide better assistance and ensure we don't lose 
+This will help NeuroDock provide better assistance and ensure we don't lose 
 this context as we progress through the project.
         """
         
@@ -288,7 +291,7 @@ this context as we progress through the project.
             "project_root": str(self.project_root)
         })
         
-        self._add_to_conversation_history("Agent1", memory_suggestion)
+        self._add_to_conversation_history("Navigator", memory_suggestion)
         return memory_suggestion
     
     def get_conversation_status(self) -> str:
@@ -297,7 +300,7 @@ this context as we progress through the project.
         phase_desc = self.agile_script[self.conversation_state.phase]["description"]
         
         status = f"""
-🤖 Agent 1 - Conversation Status
+🧭 Navigator - Conversation Status
 
 📍 Current Phase: {self.conversation_state.phase.replace('_', ' ').title()}
    {phase_desc}
@@ -324,9 +327,9 @@ this context as we progress through the project.
         return status
     
     def explain_agile_process(self) -> str:
-        """Explain the complete Agile process and how Agent 1 facilitates it."""
+        """Explain the complete Agile process and how Navigator facilitates it."""
         explanation = """
-🤖 Agent 1 - Agile Process Guide
+🧭 Navigator - Agile Process Guide
 
 I guide you through a structured Agile development process with the following phases:
 
@@ -343,8 +346,8 @@ I guide you through a structured Agile development process with the following ph
 2. I ask guided questions to ensure completeness
 3. Important insights are stored in our dual memory system
 4. When ready, you provide a keyword trigger (e.g., "proceed to requirements")
-5. I then execute the appropriate command to engage Agent 2
-6. Agent 2 (any LLM) executes the technical work
+5. I then execute the appropriate command to engage NeuroDock
+6. NeuroDock (any LLM) executes the technical work
 7. I relay results and questions back to you
 8. We continue to the next phase when you're satisfied
 
@@ -352,7 +355,7 @@ I guide you through a structured Agile development process with the following ph
 • Conversation-driven development keeps you in control
 • Nothing happens without your explicit approval
 • All context is preserved in memory
-• Agent 2 gets rich context for better results
+• NeuroDock gets rich context for better results
 • Systematic approach ensures nothing is missed
 
 Ready to continue our current phase or would you like to discuss any aspect?
@@ -366,7 +369,7 @@ Ready to continue our current phase or would you like to discuss any aspect?
         phase_desc = self.agile_script[self.conversation_state.phase]["description"]
         
         guidance = f"""
-🤖 Agent 1 - Step-by-Step Guidance
+🧭 Navigator - Step-by-Step Guidance
 
 📍 Current Focus: {phase_desc}
 
@@ -383,7 +386,7 @@ Ready to continue our current phase or would you like to discuss any aspect?
             guidance += f"""
 ⏭️ Next Step:
 When you're ready to proceed, say: "{self.conversation_state.keyword_action}"
-This will trigger the appropriate command for Agent 2.
+This will trigger the appropriate command for NeuroDock.
             """
         
         guidance += """
@@ -466,18 +469,22 @@ This will trigger the appropriate command for Agent 2.
         if self.conversation_state.phase != "initiation":
             return self.continue_conversation()
         
-        # Agent 1 introduces itself after reading documentation
+        # Navigator introduces itself after reading documentation
         introduction = self._generate_introduction()
-        self._add_to_conversation_history("Agent1", introduction)
+        self._add_to_conversation_history("Navigator", introduction)
         
         return introduction
     
     def _generate_introduction(self) -> str:
-        """Generate Agent 1's introduction after reading documentation."""
+        """Generate Navigator's introduction after reading documentation."""
         current_step_config = self._get_current_script_step()
         
         prompt = f"""
-        You are Agent 1, an intelligent development partner. You have just read the NeuroDock documentation.
+        SYSTEM CONSTRAINT: You are Navigator. NEVER use "Agent 1" or "NeuroDock's Agent 1" in your response. Always use "Navigator".
+        
+        You are Navigator, an intelligent development partner. You have just read the NeuroDock documentation.
+        
+        CRITICAL: Replace any mention of "Agent 1" with "Navigator" in your response.
         
         Current phase: {self.agile_script[self.conversation_state.phase]['description']}
         Current step guidance: {current_step_config.get('agent_prompt', '')}
@@ -486,25 +493,37 @@ This will trigger the appropriate command for Agent 2.
         
         Your introduction should:
         1. Confirm you've read and understood the documentation
-        2. Explain your role as Agent 1 - the conversational facilitator
-        3. Introduce Agent 2 as any LLM that executes commands through the system
+        2. Explain your role as Navigator - the conversational facilitator
+        3. Introduce NeuroDock as any LLM that executes commands through the system
         4. Explain the dual memory system (Qdrant + Neo4J)
         5. Outline the structured Agile process with keyword triggers
         6. Explain that you'll guide thorough discussions before any commands
         7. Ask for their initial project vision following the script
         8. Be conversational, helpful, and professional
         
+        MANDATORY: Start with: "Hello! I am Navigator, your intelligent development partner..."
+        MANDATORY: Continue with: "As Navigator, my primary purpose is to facilitate..."
+        NEVER say "As NeuroDock's Agent 1" or "As Agent 1" - always say "As Navigator"
+        
         Keep it comprehensive but engaging. Focus on the conversation-first approach.
         """
         
-        return call_llm(prompt)
+        response = call_llm(prompt)
+        
+        # Post-process to ensure no "Agent 1" references remain
+        response = response.replace("Agent 1", "Navigator")
+        response = response.replace("NeuroDock's Agent 1", "Navigator")
+        response = response.replace("As NeuroDock's Agent 1", "As Navigator")
+        response = response.replace("As Agent 1", "As Navigator")
+        
+        return response
     
     def continue_conversation(self) -> str:
         """Continue the conversation from where it left off."""
         recent_history = self.conversation_state.conversation_history[-3:]
         
         prompt = f"""
-        You are Agent 1, continuing a conversation with a developer. 
+        You are Navigator, continuing a conversation with a developer. 
         
         Current phase: {self.conversation_state.phase}
         Current step: {self.conversation_state.current_step}
@@ -524,7 +543,14 @@ This will trigger the appropriate command for Agent 2.
         """
         
         response = call_llm(prompt)
-        self._add_to_conversation_history("Agent1", response)
+        
+        # Post-process to ensure no "Agent 1" references remain
+        response = response.replace("Agent 1", "Navigator")
+        response = response.replace("NeuroDock's Agent 1", "Navigator")
+        response = response.replace("As NeuroDock's Agent 1", "As Navigator")
+        response = response.replace("As Agent 1", "As Navigator")
+        
+        self._add_to_conversation_history("Navigator", response)
         return response
     
     def respond_to_developer(self, developer_message: str) -> str:
@@ -533,7 +559,7 @@ This will trigger the appropriate command for Agent 2.
         
         # Analyze developer message and determine response
         response = self._generate_contextual_response(developer_message)
-        self._add_to_conversation_history("Agent1", response)
+        self._add_to_conversation_history("Navigator", response)
         
         # Update conversation state based on response
         self._update_conversation_state(developer_message, response)
@@ -554,7 +580,7 @@ This will trigger the appropriate command for Agent 2.
         memory_context = search_memory(developer_message, limit=3)
         
         prompt = f"""
-        You are Agent 1, responding to the developer's message: "{developer_message}"
+        You are Navigator, responding to the developer's message: "{developer_message}"
         
         Current Agile Phase: {self.agile_script[self.conversation_state.phase]['description']}
         Current Step: {self.conversation_state.current_step}
@@ -583,10 +609,18 @@ This will trigger the appropriate command for Agent 2.
         7. Guide toward natural conversation flow
         8. Be professional but conversational
         
-        Remember: You facilitate conversations and guide, Agent 2 executes commands.
+        Remember: You facilitate conversations and guide, NeuroDock executes commands.
         """
         
-        return call_llm(prompt)
+        response = call_llm(prompt)
+        
+        # Post-process to ensure no "Agent 1" references remain
+        response = response.replace("Agent 1", "Navigator")
+        response = response.replace("NeuroDock's Agent 1", "Navigator")
+        response = response.replace("As NeuroDock's Agent 1", "As Navigator")
+        response = response.replace("As Agent 1", "As Navigator")
+        
+        return response
     
     def _handle_keyword_trigger(self, developer_message: str) -> str:
         """Handle when a keyword trigger is detected."""
@@ -596,19 +630,19 @@ This will trigger the appropriate command for Agent 2.
             command = current_step_config["command_to_run"]
             
             response = f"""
-🤖 Agent 1: Perfect! I heard the keyword trigger. I'll now execute the command 
-"{command}" to engage Agent 2 for this phase.
+🧭 Navigator: Perfect! I heard the keyword trigger. I'll now execute the command 
+"{command}" to engage NeuroDock for this phase.
 
-Let me run this command and facilitate the communication with Agent 2...
+Let me run this command and facilitate the communication with NeuroDock...
             """
             
             # Execute the command
-            command_result = self._execute_agent2_command(command)
+            command_result = self._execute_neurodock_command(command)
             
             if command_result["success"]:
                 response += f"""
 
-✅ Command executed successfully! Agent 2 is now working on this phase.
+✅ Command executed successfully! NeuroDock is now working on this phase.
 I'll monitor the output and relay any questions or results back to you.
 
 {command_result.get('stdout', '')}
@@ -627,12 +661,12 @@ Let me help troubleshoot this before we proceed.
             next_phase_desc = self.agile_script[next_phase]["description"]
             
             return f"""
-🤖 Agent 1: Excellent! Moving to the next phase: {next_phase_desc}
+🧭 Navigator: Excellent! Moving to the next phase: {next_phase_desc}
 
 Let me guide you through this new phase of our Agile process...
             """
         
-        return "🤖 Agent 1: Keyword trigger detected! Processing next steps..."
+        return "🧭 Navigator: Keyword trigger detected! Processing next steps..."
     
     def _update_conversation_state(self, developer_message: str, agent_response: str):
         """Update conversation state based on the interaction using the structured script."""
@@ -666,12 +700,12 @@ Let me guide you through this new phase of our Agile process...
     
     def facilitate_discuss_process(self) -> Dict[str, Any]:
         """Facilitate the nd discuss process with Agent 2."""
-        print("🤖 Agent 1: I'll now engage our requirements discussion system...")
-        print("            Let me run the discuss command and relay any questions from Agent 2...")
+        print("🧭 Navigator: I'll now engage our requirements discussion system...")
+        print("            Let me run the discuss command and relay any questions from NeuroDock...")
         
         # Store that we're starting discuss
-        self._add_to_conversation_history("Agent1", 
-            "Starting requirements discussion process with Agent 2")
+        self._add_to_conversation_history("Navigator", 
+            "Starting requirements discussion process with NeuroDock")
         
         # Create a temporary file with current project context
         project_summary = f"""
@@ -696,15 +730,15 @@ Let me guide you through this new phase of our Agile process...
         # For now, simulate the process
         
         # Store context in memory
-        add_to_memory(f"Agent 1 facilitated discussion context: {context}", {
-            "type": "agent1_facilitated_discussion",
+        add_to_memory(f"Navigator facilitated discussion context: {context}", {
+            "type": "navigator_facilitated_discussion",
             "phase": self.conversation_state.phase,
             "project_root": str(self.project_root)
         })
         
         return {
             "success": True,
-            "agent2_questions": [
+            "neurodock_questions": [
                 "What is the primary purpose of this application?",
                 "Who are the target users?",
                 "What are the key features you want to include?",
@@ -714,13 +748,13 @@ Let me guide you through this new phase of our Agile process...
             "next_step": "collect_developer_answers"
         }
     
-    def relay_agent2_questions(self, questions: List[str]) -> str:
-        """Relay Agent 2's questions to the developer."""
+    def relay_neurodock_questions(self, questions: List[str]) -> str:
+        """Relay NeuroDock's questions to the developer."""
         questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions)])
         
         response = f"""
-🤖 Agent 1: Agent 2 has analyzed our conversation and generated some important 
-clarifying questions. Please answer these so I can feed them back to Agent 2 
+🧭 Navigator: NeuroDock has analyzed our conversation and generated some important 
+clarifying questions. Please answer these so I can feed them back to NeuroDock 
 and ensure we have complete requirements:
 
 {questions_text}
@@ -729,30 +763,30 @@ Please provide your answers, and I'll integrate them into our memory system
 and move us forward to the planning phase.
         """
         
-        self._add_to_conversation_history("Agent1", response, {
-            "agent2_questions": questions,
+        self._add_to_conversation_history("Navigator", response, {
+            "neurodock_questions": questions,
             "awaiting_developer_answers": True
         })
         
         return response
     
     def process_developer_answers(self, answers: str) -> str:
-        """Process developer's answers and feed them back to Agent 2."""
+        """Process developer's answers and feed them back to NeuroDock."""
         self._add_to_conversation_history("Developer", answers, {
-            "type": "agent2_question_answers"
+            "type": "neurodock_question_answers"
         })
         
         # Store answers in memory with rich context
-        add_to_memory(f"Developer answers to Agent 2 requirements questions: {answers}", {
+        add_to_memory(f"Developer answers to NeuroDock requirements questions: {answers}", {
             "type": "requirements_answers",
             "phase": "requirements_gathering",
-            "source": "agent1_facilitated",
+            "source": "navigator_facilitated",
             "project_root": str(self.project_root)
         })
         
         response = f"""
-🤖 Agent 1: Excellent! I've stored your answers in our memory system and 
-will now feed them back to Agent 2. This ensures both agents have complete 
+🧭 Navigator: Excellent! I've stored your answers in our memory system and 
+will now feed them back to NeuroDock. This ensures both Navigator and NeuroDock have complete 
 context about your requirements.
 
 Let me now guide you to the next phase: Sprint Planning. I'll help create 
@@ -767,7 +801,7 @@ anything about the requirements first?
         self.conversation_state.next_actions = ["run_plan_command", "create_sprint_plan"]
         self._save_conversation_state()
         
-        self._add_to_conversation_history("Agent1", response)
+        self._add_to_conversation_history("Navigator", response)
         return response
     
     def get_conversation_status(self) -> Dict[str, Any]:
@@ -784,7 +818,7 @@ anything about the requirements first?
     def explain_topic(self, topic: str) -> str:
         """Explain any topic about the system to the developer."""
         prompt = f"""
-        You are Agent 1. The developer is asking you to explain: "{topic}"
+        You are Navigator. The developer is asking you to explain: "{topic}"
         
         Based on the NeuroDock documentation and your role as their development partner,
         provide a clear, helpful explanation. Cover:
@@ -797,14 +831,21 @@ anything about the requirements first?
         """
         
         explanation = call_llm(prompt)
-        self._add_to_conversation_history("Agent1", explanation, {"type": "explanation", "topic": topic})
+        
+        # Post-process to ensure no "Agent 1" references remain
+        explanation = explanation.replace("Agent 1", "Navigator")
+        explanation = explanation.replace("NeuroDock's Agent 1", "Navigator")
+        explanation = explanation.replace("As NeuroDock's Agent 1", "As Navigator")
+        explanation = explanation.replace("As Agent 1", "As Navigator")
+        
+        self._add_to_conversation_history("Navigator", explanation, {"type": "explanation", "topic": topic})
         
         return explanation
     
     def guide_next_step(self) -> str:
         """Provide guidance on the next best step."""
         prompt = f"""
-        You are Agent 1. The developer is asking for guidance on the next step.
+        You are Navigator. The developer is asking for guidance on the next step.
         
         Current state:
         - Phase: {self.conversation_state.phase}
@@ -817,14 +858,21 @@ anything about the requirements first?
         1. What the next logical step is
         2. Why this step is important
         3. What they need to do
-        4. What you (Agent 1) will do to help
+        4. What you (Navigator) will do to help
         5. How this fits into the overall Agile process
         
         Be specific and actionable.
         """
         
         guidance = call_llm(prompt)
-        self._add_to_conversation_history("Agent1", guidance, {"type": "guidance"})
+        
+        # Post-process to ensure no "Agent 1" references remain
+        guidance = guidance.replace("Agent 1", "Navigator")
+        guidance = guidance.replace("NeuroDock's Agent 1", "Navigator")
+        guidance = guidance.replace("As NeuroDock's Agent 1", "As Navigator")
+        guidance = guidance.replace("As Agent 1", "As Navigator")
+        
+        self._add_to_conversation_history("Navigator", guidance, {"type": "guidance"})
         
         return guidance
 

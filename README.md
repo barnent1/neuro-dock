@@ -11,13 +11,13 @@ NeuroDock is an innovative AI-orchestrated development system that transforms ho
 ## 🌟 Key Features
 
 ### 🤖 Dual Agent Architecture
-- **Agent 1 (Conversational)**: Intelligent conversation facilitator that guides developers through structured Agile processes
-- **Agent 2 (Execution)**: Any LLM backend that executes technical tasks with rich context
+- **Navigator (Conversational)**: Intelligent conversation facilitator that guides developers through structured Agile processes
+- **NeuroDock (Execution)**: Any LLM backend that executes technical tasks with rich context
 
 ### 🧠 Advanced Memory System
 - **Dual Storage**: Qdrant (vector) + Neo4J (graph) for comprehensive context preservation
 - **Cross-Session Memory**: Conversations and decisions persist across development sessions
-- **Contextual Reminders**: Agent 2 receives intelligent reminders based on conversation history
+- **Contextual Reminders**: NeuroDock receives intelligent reminders based on conversation history
 
 ### 📋 Structured Agile Workflow
 - **9 Comprehensive Phases**: From project initiation to retrospective
@@ -53,12 +53,12 @@ python -m neurodock.cli init
 ### Your First AI-Guided Project
 
 ```bash
-# Start a conversation with Agent 1
+# Start a conversation with Navigator
 python -m neurodock.cli begin
 
-# Agent 1 will guide you through:
+# Navigator will guide you through:
 # 1. Project vision discussion
-# 2. Requirements gathering with Agent 2
+# 2. Requirements gathering with NeuroDock
 # 3. Sprint planning and task breakdown
 # 4. Technical design and architecture
 # 5. Iterative development cycles
@@ -72,26 +72,26 @@ python -m neurodock.cli begin
 
 ### The Conversation-First Approach
 
-1. **Deep Discussions**: Agent 1 facilitates thorough conversations about each project phase
+1. **Deep Discussions**: Navigator facilitates thorough conversations about each project phase
 2. **Memory Storage**: Important insights and decisions are stored in the dual memory system
 3. **Keyword Triggers**: When ready, you say phrases like "proceed to requirements" to advance
-4. **Agent 2 Execution**: Commands are issued to Agent 2 with full conversation context
-5. **Result Integration**: Agent 1 interprets results and continues the conversation
+4. **NeuroDock Execution**: Commands are issued to NeuroDock with full conversation context
+5. **Result Integration**: Navigator interprets results and continues the conversation
 
 ### Example Workflow
 
 ```
 You: "I want to build a task management app for small teams"
 
-Agent 1: "Excellent! Let's explore this vision together..."
+Navigator: "Excellent! Let's explore this vision together..."
 [Detailed conversation about goals, users, features]
 
 You: "proceed to requirements"
 
-Agent 1: "Perfect! Engaging Agent 2 for detailed requirements gathering..."
-[Agent 2 works with full context from conversation]
+Navigator: "Perfect! Engaging NeuroDock for detailed requirements gathering..."
+[NeuroDock works with full context from conversation]
 
-Agent 1: "Based on Agent 2's analysis, here are some clarifying questions..."
+Navigator: "Based on NeuroDock's analysis, here are some clarifying questions..."
 [Continues facilitating until you're ready for next phase]
 ```
 
@@ -106,7 +106,7 @@ Agent 1: "Based on Agent 2's analysis, here are some clarifying questions..."
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Developer     │────│    Agent 1       │────│    Agent 2      │
+│   Developer     │────│    Navigator     │────│   NeuroDock     │
 │  (Chat Window)  │    │ (Conversation    │    │  (Any LLM via   │
 │                 │    │  Facilitator)    │    │   CLI/Terminal) │
 └─────────────────┘    └──────────────────┘    └─────────────────┘

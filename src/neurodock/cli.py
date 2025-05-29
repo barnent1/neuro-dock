@@ -1727,7 +1727,7 @@ def graph_memory(
         try:
             from .memory.neo4j_store import get_neo4j_store
             store = get_neo4j_store()
-            results = store.search_memories(search, str(root))
+            results = store.search_memories(search, memory_types=None, project_path=str(root))
             
             if results:
                 typer.echo(f"🔍 Found {len(results)} results in graph memory:")
@@ -1772,7 +1772,7 @@ def reminders(
     command: str = typer.Option(None, "--for-command", "-c", help="Show reminders for specific command"),
     clear: bool = typer.Option(False, "--clear", help="Clear old reminders")
 ):
-    """🔄 View and manage Agent 2 reminders."""
+    """🔄 View and manage NeuroDock reminders."""
     root = Path.cwd()
     
     if clear:
@@ -1797,7 +1797,7 @@ def reminders(
 
 @app.command("begin")
 def begin_conversation():
-    """🤖 Start comprehensive Agent 1 conversation for project development."""
+    """🧭 Start comprehensive Navigator conversation for project development."""
     try:
         from .conversational_agent import get_conversation_agent
         agent = get_conversation_agent()
@@ -1808,7 +1808,7 @@ def begin_conversation():
 
 @app.command("continue")
 def continue_conversation():
-    """🔄 Resume Agent 1 conversation where left off."""
+    """🔄 Resume Navigator conversation where left off."""
     try:
         from .conversational_agent import get_conversation_agent
         agent = get_conversation_agent()
@@ -1819,13 +1819,13 @@ def continue_conversation():
 
 @app.command("conversation-status")
 def conversation_status():
-    """📊 View current Agent 1 conversation state."""
+    """📊 View current Navigator conversation state."""
     try:
         from .conversational_agent import get_conversation_agent
         agent = get_conversation_agent()
         status = agent.get_conversation_status()
         
-        typer.echo("🤖 Agent 1 Conversation Status")
+        typer.echo("🧭 Navigator Conversation Status")
         typer.echo("=" * 40)
         typer.echo(f"Phase: {status['phase']}")
         typer.echo(f"Current Step: {status['current_step']}")
@@ -1837,7 +1837,7 @@ def conversation_status():
 
 @app.command("explain")
 def explain_topic(topic: str = typer.Argument(..., help="Topic to explain")):
-    """💡 Agent 1 explains any system aspect."""
+    """💡 Navigator explains any system aspect."""
     try:
         from .conversational_agent import get_conversation_agent
         agent = get_conversation_agent()
@@ -1848,7 +1848,7 @@ def explain_topic(topic: str = typer.Argument(..., help="Topic to explain")):
 
 @app.command("guide-me")
 def guide_next_step():
-    """🧭 Get Agent 1 guidance on next best step."""
+    """🧭 Get Navigator guidance on next best step."""
     try:
         from .conversational_agent import get_conversation_agent
         agent = get_conversation_agent()
