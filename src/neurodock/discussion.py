@@ -133,9 +133,19 @@ Format as a numbered list of questions. Be specific and actionable."""
     
     # Check if input is available from stdin (piped input)
     if not sys.stdin.isatty():
-        # Read from stdin (piped input)
-        user_answers = sys.stdin.read().strip()
-        typer.echo(f"Your answers: {user_answers}")
+        # For piped input, try to read remaining stdin
+        try:
+            user_answers = sys.stdin.read().strip()
+            if user_answers:
+                typer.echo(f"Your answers: {user_answers}")
+            else:
+                # No additional input - use a simple default response for piped mode
+                user_answers = "We will keep it basic and no frills as specified."
+                typer.echo(f"Your answers: {user_answers} (auto-generated for piped input)")
+        except Exception:
+            # Fallback for piped input
+            user_answers = "We will keep it basic and no frills."
+            typer.echo(f"Your answers: {user_answers} (fallback for piped input)")
     else:
         # Interactive mode
         try:
@@ -286,15 +296,43 @@ Return ONLY valid YAML without any markdown formatting."""
     try:
         response = call_llm(task_prompt)
         
-        # Clean the response to extract YAML
+        # Enhanced YAML cleaning and extraction
         yaml_content = response.strip()
-        if yaml_content.startswith("```yaml"):
-            yaml_content = yaml_content[7:]
-        if yaml_content.startswith("```"):
-            yaml_content = yaml_content[3:]
-        if yaml_content.endswith("```"):
-            yaml_content = yaml_content[:-3]
+        
+        # Remove all markdown code block formatting
+        yaml_content = yaml_content.replace('```yaml', '').replace('```', '')
+        
+        # Handle document separators (split on --- and take first document)
+        if '---' in yaml_content:
+            yaml_parts = yaml_content.split('---')
+            # Find the part that starts with project:, tasks:, or phases:
+            for part in yaml_parts:
+                part = part.strip()
+                if part and any(part.startswith(prefix) for prefix in ['project:', 'tasks:', 'phases:']):
+                    yaml_content = part
+                    break
+            else:
+                # If no valid part found, use the first non-empty part
+                yaml_content = next((part.strip() for part in yaml_parts if part.strip()), yaml_content)
+        
+        # Remove any leading explanatory text before the YAML
+        lines = yaml_content.split('\n')
+        yaml_start_idx = 0
+        for i, line in enumerate(lines):
+            stripped_line = line.strip()
+            if stripped_line.startswith(('project:', 'tasks:', 'phases:')):
+                yaml_start_idx = i
+                break
+        
+        if yaml_start_idx > 0:
+            yaml_content = '\n'.join(lines[yaml_start_idx:])
+        
         yaml_content = yaml_content.strip()
+        
+        # Debug output for troubleshooting
+        if not yaml_content:
+            typer.echo(f"❌ Empty YAML content after cleaning. Original response length: {len(response)}")
+            typer.echo(f"First 200 chars: {response[:200]}")
         
         # Try to parse as YAML
         try:
@@ -313,12 +351,39 @@ Return ONLY valid YAML without any markdown formatting."""
                 # Count and display tasks
                 task_count = 0
                 if "phases" in plan_data:
-                    for phase_id, phase in plan_data["phases"].items():
-                        typer.echo(f"📁 {phase.get('title', phase_id)}")
-                        if "tasks" in phase:
-                            for task in phase["tasks"]:
+                    phases = plan_data["phases"]
+                    if isinstance(phases, dict):
+                        # Handle dictionary format (expected)
+                        for phase_id, phase in phases.items():
+                            if isinstance(phase, dict):
+                                typer.echo(f"📁 {phase.get('title', phase_id)}")
+                                if "tasks" in phase and isinstance(phase["tasks"], list):
+                                    for task in phase["tasks"]:
+                                        if isinstance(task, dict):
+                                            task_count += 1
+                                            typer.echo(f"  • {task.get('title', task.get('id', 'Unnamed'))}")
+                    elif isinstance(phases, list):
+                        # Handle list format (fallback)
+                        for i, phase in enumerate(phases):
+                            if isinstance(phase, dict):
+                                phase_title = phase.get('title', f'Phase {i+1}')
+                                typer.echo(f"📁 {phase_title}")
+                                if "tasks" in phase and isinstance(phase["tasks"], list):
+                                    for task in phase["tasks"]:
+                                        if isinstance(task, dict):
+                                            task_count += 1
+                                            typer.echo(f"  • {task.get('title', task.get('id', 'Unnamed'))}")
+                            elif isinstance(phase, str):
+                                # Handle simple string phases
+                                typer.echo(f"📁 {phase}")
+                elif "tasks" in plan_data:
+                    # Handle flat tasks structure
+                    tasks = plan_data["tasks"]
+                    if isinstance(tasks, list):
+                        for task in tasks:
+                            if isinstance(task, dict):
                                 task_count += 1
-                                typer.echo(f"  • {task.get('title', task.get('id', 'Unnamed'))}")
+                                typer.echo(f"  • {task.get('title', task.get('name', 'Unnamed'))}")
                 
                 typer.echo(f"\nTotal tasks: {task_count}")
                 typer.echo("="*50)
@@ -344,6 +409,15 @@ Return ONLY valid YAML without any markdown formatting."""
                     
         except yaml.YAMLError as ye:
             typer.echo(f"❌ YAML parsing failed: {ye}")
+            typer.echo(f"📝 Raw YAML content that failed to parse:")
+            typer.echo("-" * 40)
+            # Show first few lines with line numbers for debugging
+            lines = yaml_content.split('\n')[:10]
+            for i, line in enumerate(lines, 1):
+                typer.echo(f"{i:2}: {line}")
+            if len(yaml_content.split('\n')) > 10:
+                typer.echo(f"... ({len(yaml_content.split('\n')) - 10} more lines)")
+            typer.echo("-" * 40)
             
     except Exception as e:
         typer.echo(f"❌ Failed to generate task plan: {e}", err=True)
