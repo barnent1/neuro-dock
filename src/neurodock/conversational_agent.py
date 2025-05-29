@@ -256,37 +256,45 @@ Recent Activity:
 """
         if memory_context['recent_context']:
             for i, memory in enumerate(memory_context['recent_context'], 1):
-                context_summary += f"  {i}. {memory.get('content', 'N/A')[:100]}...\n"
+                # Handle both string and dict memory entries
+                memory_text = memory if isinstance(memory, str) else memory.get('content', 'N/A')
+                context_summary += f"  {i}. {memory_text[:100]}...\n"
         
         if memory_context['completed_tasks']:
             context_summary += "\nCompleted Tasks:\n"
             for task in memory_context['completed_tasks']:
-                context_summary += f"  ✅ {task.get('content', 'N/A')[:80]}...\n"
+                task_text = task if isinstance(task, str) else task.get('content', 'N/A')
+                context_summary += f"  ✅ {task_text[:80]}...\n"
         
         if memory_context['pending_tasks']:
             context_summary += "\nPending Tasks:\n"
             for task in memory_context['pending_tasks']:
-                context_summary += f"  ⏳ {task.get('content', 'N/A')[:80]}...\n"
+                task_text = task if isinstance(task, str) else task.get('content', 'N/A')
+                context_summary += f"  ⏳ {task_text[:80]}...\n"
         
         if memory_context['recent_commands']:
             context_summary += "\nRecent Commands:\n"
             for cmd in memory_context['recent_commands']:
-                context_summary += f"  🔧 {cmd.get('content', 'N/A')[:80]}...\n"
+                cmd_text = cmd if isinstance(cmd, str) else cmd.get('content', 'N/A')
+                context_summary += f"  🔧 {cmd_text[:80]}...\n"
         
         if memory_context['discussions']:
             context_summary += "\nRecent Discussions:\n"
             for disc in memory_context['discussions']:
-                context_summary += f"  💭 {disc.get('content', 'N/A')[:80]}...\n"
+                disc_text = disc if isinstance(disc, str) else disc.get('content', 'N/A')
+                context_summary += f"  💭 {disc_text[:80]}...\n"
         
         if memory_context['neurodock_communication']:
             context_summary += "\nNeuroDock Communications:\n"
             for comm in memory_context['neurodock_communication']:
-                context_summary += f"  🤖 {comm.get('content', 'N/A')[:80]}...\n"
+                comm_text = comm if isinstance(comm, str) else comm.get('content', 'N/A')
+                context_summary += f"  🤖 {comm_text[:80]}...\n"
         
         if memory_context['next_steps']:
             context_summary += "\nNext Steps from Memory:\n"
             for step in memory_context['next_steps']:
-                context_summary += f"  ➡️ {step.get('content', 'N/A')[:80]}...\n"
+                step_text = step if isinstance(step, str) else step.get('content', 'N/A')
+                context_summary += f"  ➡️ {step_text[:80]}...\n"
         
         return context_summary
 
@@ -1360,12 +1368,14 @@ anything about the requirements first?
         if completed_tasks:
             summary += "\n🎯 Recent Completions:\n"
             for task in completed_tasks[:3]:
-                summary += f"  • {task.get('content', 'N/A')[:60]}...\n"
+                task_text = task if isinstance(task, str) else task.get('content', 'N/A')
+                summary += f"  • {task_text[:60]}...\n"
         
         if pending_tasks:
             summary += "\n⏭️ Next Up:\n"
             for task in pending_tasks[:3]:
-                summary += f"  • {task.get('content', 'N/A')[:60]}...\n"
+                task_text = task if isinstance(task, str) else task.get('content', 'N/A')
+                summary += f"  • {task_text[:60]}...\n"
         
         return summary
 
@@ -1586,3 +1596,18 @@ Memory Search Test:
 - Phase memories: {len(search_memory(f"{self.conversation_state.phase} {self.project_root}", limit=5))}
 - Task memories: {len(search_memory(f"task {self.project_root}", limit=5))}
         """
+
+# Global conversation agent instance
+_conversation_agent = None
+
+def get_conversation_agent(project_root: str = None) -> ConversationalAgent:
+    """Get the global conversation agent instance."""
+    global _conversation_agent
+    
+    if not project_root:
+        project_root = str(Path.cwd())
+    
+    if _conversation_agent is None or str(_conversation_agent.project_root) != project_root:
+        _conversation_agent = ConversationalAgent(project_root)
+    
+    return _conversation_agent

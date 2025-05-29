@@ -1,54 +1,98 @@
 # NeuroDock Architecture Overview
 
-## System Architecture
+## Enhanced System Architecture *(Updated)*
 
-NeuroDock implements a sophisticated dual-agent architecture with advanced memory systems for intelligent, conversation-driven development.
+NeuroDock implements a sophisticated dual-agent architecture with advanced memory systems and enhanced iterative discussion capabilities for intelligent, conversation-driven development.
 
 ### Core Components
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         NeuroDock System                        │
+│                    Enhanced NeuroDock System                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
 │  │  Developer  │◄──►│  Navigator  │◄──►│  NeuroDock  │         │
-│  │    (Chat)   │    │(Conversation│    │  (Any LLM)  │         │
-│  │             │    │Facilitator) │    │             │         │
+│  │ (Provides   │    │(Facilitates │    │ (Enhanced   │         │
+│  │  Answers)   │    │ Iteration)  │    │Discussion)  │         │
 │  └─────────────┘    └─────────────┘    └─────────────┘         │
-│                            │                                    │
-│                            ▼                                    │
-│                  ┌─────────────────┐                           │
-│                  │  Memory System  │                           │
-│                  │ (Qdrant+Neo4J)  │                           │
-│                  └─────────────────┘                           │
+│                            │                   │                │
+│                            ▼                   ▼                │
+│                  ┌─────────────────────────────────┐            │
+│                  │      Enhanced Memory System     │            │
+│                  │ • Discussion State Management   │            │
+│                  │ • Conversation History         │            │
+│                  │ • Vector Memory (Qdrant)      │            │
+│                  │ • Relational Storage          │            │
+│                  └─────────────────────────────────┘            │
 │                            │                                    │
 │                            ▼                                    │
 │                  ┌─────────────────┐                           │
 │                  │   PostgreSQL    │                           │
-│                  │    Database     │                           │
+│                  │ • State Storage │                           │
+│                  │ • Audit Trail   │                           │
+│                  │ • Persistence   │                           │
 │                  └─────────────────┘                           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Enhanced Discussion System *(New Feature)*
+
+### Iterative Conversation Engine
+
+**Purpose**: Enables complex, multi-round requirement gathering through intelligent iteration
+
+**Key Features**:
+- **Unlimited Iterations**: Support for complex enterprise-level requirement gathering
+- **State Persistence**: Complete conversation history preserved across sessions
+- **Completeness Analysis**: AI-powered analysis determines when more questions are needed
+- **Context-Aware Questions**: Follow-up questions generated based on previous answers
+- **Navigator Integration**: Seamless handoff between human and AI components
+
+**Implementation**: `src/neurodock/discussion.py`
+
+### Discussion State Flow
+
+```
+┌─────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│    new      │──▶│ questions_pending│──▶│ awaiting_answers│
+└─────────────┘   └─────────────────┘   └─────────────────┘
+                                                  │
+                                                  ▼
+┌─────────────────┐                    ┌─────────────────┐
+│ ready_for_planning│◄──────────────────│ (iteration loop)│
+└─────────────────┘                    └─────────────────┘
+```
+
 ## Agent Architecture
 
-### Navigator (Conversational Facilitator)
+### Navigator (Enhanced Conversation Facilitator) *(Updated)*
 
-**Purpose**: Guides developers through structured Agile conversations
+**Purpose**: Guides developers through structured iterative conversations with enhanced discussion capabilities
 
 **Key Responsibilities**:
-- Read and understand system capabilities via `.neuro-dock.md`
-- Facilitate structured conversations following Agile methodology
-- Parse developer inputs and maintain conversation state
-- Execute keyword-triggered commands to engage NeuroDock
-- Relay NeuroDock results back to developer
-- Store all conversation context in memory systems
+- Facilitate multi-round requirement gathering conversations
+- Monitor discussion state and completion progress
+- Collect developer answers and provide them to the system
+- Interpret system analysis and continue iteration as needed
+- Store all conversation context in enhanced memory systems
+- Provide clear guidance on next actions required
+
+**Enhanced Capabilities**:
+- **State Monitoring**: Track discussion progress and completion percentage
+- **Answer Collection**: Gather comprehensive developer responses
+- **Iteration Management**: Facilitate unlimited Q&A rounds until complete
+- **Context Preservation**: Maintain full conversation history across sessions
 
 **Implementation**: `src/neurodock/conversational_agent.py`
 
-**Conversation Flow**:
+**Navigator Commands**:
+```bash
+nd discuss-status     # Check current discussion state and next action
+nd discuss-answer     # Provide developer answers to continue iteration
+nd memory --search="discussion"  # Review conversation history
+```
 1. **Initiation**: Introduce system and gather project vision
 2. **Requirements**: Facilitate detailed requirements gathering
 3. **Planning**: Guide sprint planning and task breakdown
@@ -69,59 +113,53 @@ NeuroDock implements a sophisticated dual-agent architecture with advanced memor
 - `"proceed to deployment"` → Execute `nd deploy`
 - `"proceed to retrospective"` → Execute `nd retrospective`
 
-### NeuroDock (Task Executor)
+### NeuroDock (Enhanced Task Executor) *(Updated)*
 
-**Purpose**: Execute technical development tasks with rich context
+**Purpose**: Execute technical development tasks with enhanced iterative discussion capabilities
 
 **Key Characteristics**:
 - Can be any LLM (Claude, OpenAI, Ollama, local models)
-- Receives rich context from Navigator conversations
-- Works through CLI commands with contextual reminders
-- Provides feedback through the reminder system
+- Enhanced discussion engine with multi-round conversation support
+- Receives comprehensive context from iterative requirement gathering
+- Provides intelligent completeness analysis and follow-up questions
+- Works through enhanced CLI commands with state management
+
+**Enhanced Capabilities**:
+- **Iterative Question Generation**: Context-aware clarifying questions
+- **Completeness Analysis**: AI-powered analysis of requirement gathering progress
+- **Follow-up Intelligence**: Generate targeted questions based on previous answers
+- **State Management**: Track and persist conversation state across sessions
 
 **Context Sources**:
-- Full conversation history from Navigator
-- Project requirements and constraints
-- Previous task completion history
-- Technical decisions and preferences
-- Memory system insights
+- Complete iterative conversation history
+- Discussion state and completion analysis
+- Project requirements gathered through multiple iterations
+- Technical decisions and constraints clarified through Q&A
+- Enhanced memory system with conversation metadata
 
-## Memory System Architecture
+## Enhanced Memory System Architecture *(Updated)*
 
-### Dual Storage Strategy
+### Triple Storage Strategy *(Enhanced)*
 
 **Qdrant (Vector Storage)**:
-- Semantic search capabilities
-- Conversation content indexing
-- Contextual similarity matching
-- Cross-conversation correlation
+- Semantic search capabilities across all conversation iterations
+- Discussion content indexing with temporal context
+- Contextual similarity matching for follow-up questions
+- Cross-conversation correlation and learning
 
-**Neo4J (Graph Storage)**:
-- Relationship mapping
-- Decision dependency tracking
-- Project structure representation
-- Agent interaction patterns
+**PostgreSQL (Enhanced Relational Storage)**:
+- **Discussion State Management**: Persistent conversation states across sessions
+- **Iteration Tracking**: Complete audit trail of all Q&A rounds
+- **Conversation History**: Structured storage of questions, answers, and metadata
+- **Completeness Metrics**: Progress tracking and analysis results
+- Task management with enhanced context
+- Project metadata with conversation insights
 
-**PostgreSQL (Relational Storage)**:
-- Task management
-- Project metadata
-- Command history
-- Structured data relationships
-
-### Memory Integration Flow
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ Conversation│───►│   Memory    │───►│  Agent 2    │
-│   Context   │    │ Processing  │    │ Reminders   │
-└─────────────┘    └─────────────┘    └─────────────┘
-       │                   │                   │
-       ▼                   ▼                   ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Qdrant    │    │   Neo4J     │    │ PostgreSQL  │
-│  (Vector)   │    │  (Graph)    │    │(Relational) │
-└─────────────┘    └─────────────┘    └─────────────┘
-```
+**Memory Integration Features**:
+- **Temporal Context**: Track conversation progression over time
+- **State Persistence**: Resume interrupted discussions exactly where left off
+- **Audit Trail**: Complete record of all conversation iterations for compliance
+- **Context Search**: Intelligent search across all discussion history
 
 ## CLI Architecture
 

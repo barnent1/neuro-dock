@@ -45,7 +45,7 @@ pip install -e .
 
 ```bash
 # Setup with default PostgreSQL configuration
-python -m neurodock.cli setup
+nd setup
 
 # Follow the interactive prompts for database connection
 ```
@@ -57,7 +57,7 @@ python -m neurodock.cli setup
 pip install qdrant-client neo4j
 
 # Run enhanced setup
-python -m neurodock.cli setup --enhanced
+nd setup --enhanced
 ```
 
 ### 4. Initialize Your First Project
@@ -69,8 +69,8 @@ cd your-project-directory
 # Initialize NeuroDock
 nd init
 
-# Start your first conversation with Agent 1
-nd begin
+# Start your first enhanced iterative discussion
+nd discuss
 ```
 
 ## Detailed Installation
@@ -172,7 +172,7 @@ CONVERSATION_HISTORY_DAYS=30
 
 ```bash
 # Run the setup command
-python -m neurodock.cli setup
+nd setup
 
 # This will:
 # 1. Create system configuration directory

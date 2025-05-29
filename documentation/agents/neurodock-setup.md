@@ -91,10 +91,10 @@ NeuroDock integrates through several mechanisms:
 
 2. **CLI Interface**
    ```bash
-   # NeuroDock can be invoked directly
-   python -m src.neurodock.main --task implementation --context-id 12345
+   # NeuroDock can be invoked directly through modern CLI
+   nd implement --task implementation --context-id 12345
    
-   # Or through Navigator coordination
+   # Or through Navigator coordination via enhanced discussion system
    # Navigator automatically delegates to NeuroDock when needed
    ```
 

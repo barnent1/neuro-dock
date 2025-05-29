@@ -99,6 +99,80 @@ neurodock discuss
 └── outputs/           # Generated files
 ```
 
+#### `discuss-status` - Check Discussion Status *(New!)*
+
+Check the current status of an iterative discussion and determine what Navigator should do next.
+
+**Syntax:**
+```bash
+neurodock discuss-status
+```
+
+**Purpose**: 
+- Monitor multi-round discussion progress
+- Provide guidance to Navigator on next actions
+- Display pending questions and completion status
+
+**Output:**
+```bash
+🗣️  Discussion Status Report
+========================================
+Status: questions_pending
+Iteration: 1
+Completion: 25%
+Next Action: ask_developer_questions
+
+📋 Pending Questions:
+--------------------
+1. What type of products will be sold on the website?
+2. What payment methods should be supported?
+3. Do you need inventory management features?
+```
+
+**Use Cases:**
+- Navigator checking what questions to ask developer
+- Monitoring discussion completion percentage
+- Understanding next required action in workflow
+
+#### `discuss-answer` - Provide Discussion Answers *(New!)*
+
+Provide developer answers to continue iterative discussion process. Used by Navigator to feed developer responses back to the system.
+
+**Syntax:**
+```bash
+echo "developer answers..." | neurodock discuss-answer
+```
+
+**Purpose**:
+- Submit developer answers to system for analysis
+- Continue iterative discussion workflow
+- Enable multi-round question and answer cycles
+
+**Input Method**: Expects answers via stdin (pipe input)
+
+**Workflow:**
+1. Navigator asks developer the pending questions
+2. Navigator collects comprehensive answers
+3. Navigator pipes answers using this command
+4. System analyzes completeness and determines next steps
+
+**Example:**
+```bash
+# Navigator provides answers from developer
+echo "1. Digital products - software and courses
+2. Stripe payment integration with credit cards  
+3. Basic inventory tracking but not advanced warehouse management
+4. Email/password auth plus Google OAuth
+5. Expecting 1000-5000 users initially" | neurodock discuss-answer
+```
+
+**Response:**
+```bash
+📝 Processing answers and continuing discussion...
+✅ Answers processed successfully!
+💡 Next action: check_status_for_next_iteration
+```
+
 #### `chat` - Start Interactive Conversation
 
 Start a conversation session with Agent 1.

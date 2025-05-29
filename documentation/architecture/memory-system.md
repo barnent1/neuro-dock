@@ -85,6 +85,34 @@ CREATE TABLE context_snapshots (
     context_data JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Enhanced Discussion State Management *(Enhanced)*
+CREATE TABLE discussion_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+    project_prompt TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL, -- 'new', 'questions_pending', 'awaiting_answers', 'ready_for_planning'
+    current_iteration INTEGER DEFAULT 1,
+    questions_generated TEXT,
+    answers_received TEXT,
+    completion_percentage INTEGER DEFAULT 0,
+    next_action VARCHAR(100),
+    conversation_history JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Discussion Iterations Tracking *(Enhanced)*
+CREATE TABLE discussion_iterations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    discussion_state_id UUID REFERENCES discussion_states(id) ON DELETE CASCADE,
+    iteration_number INTEGER NOT NULL,
+    questions TEXT NOT NULL,
+    answers TEXT,
+    completeness_analysis TEXT,
+    answered_timestamp TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 ```
 
 **Indexes for Performance**:
@@ -95,6 +123,10 @@ CREATE INDEX idx_messages_session_id ON messages(session_id);
 CREATE INDEX idx_messages_timestamp ON messages(timestamp);
 CREATE INDEX idx_implementation_results_session_id ON implementation_results(session_id);
 CREATE INDEX idx_context_snapshots_session_id ON context_snapshots(session_id);
+CREATE INDEX idx_discussion_states_session_id ON discussion_states(session_id);
+CREATE INDEX idx_discussion_states_status ON discussion_states(status);
+CREATE INDEX idx_discussion_iterations_discussion_state_id ON discussion_iterations(discussion_state_id);
+CREATE INDEX idx_discussion_iterations_number ON discussion_iterations(iteration_number);
 ```
 
 ### 2. Qdrant - Vector Database
@@ -312,6 +344,113 @@ class MemoryManager:
         
         return context
 ```
+
+### Enhanced Discussion System Integration *(New Feature)*
+
+The memory system provides specialized support for the enhanced iterative discussion system:
+
+```python
+# src/memory/discussion_manager.py
+class DiscussionStateManager:
+    def __init__(self, memory_manager):
+        self.memory = memory_manager
+    
+    async def initialize_discussion(self, session_id, project_prompt):
+        """Initialize a new iterative discussion"""
+        discussion_state = await self.memory.postgres.create_discussion_state(
+            session_id=session_id,
+            project_prompt=project_prompt,
+            status="new",
+            current_iteration=1,
+            completion_percentage=0,
+            next_action="generate_initial_questions"
+        )
+        return discussion_state
+    
+    async def store_questions(self, discussion_id, questions, iteration):
+        """Store generated questions for current iteration"""
+        await self.memory.postgres.create_discussion_iteration(
+            discussion_state_id=discussion_id,
+            iteration_number=iteration,
+            questions=questions
+        )
+        
+        await self.memory.postgres.update_discussion_state(
+            discussion_id,
+            status="questions_pending",
+            next_action="ask_developer_questions"
+        )
+    
+    async def store_answers(self, discussion_id, iteration, answers):
+        """Store developer answers and analyze completeness"""
+        await self.memory.postgres.update_discussion_iteration(
+            discussion_id, 
+            iteration,
+            answers=answers,
+            answered_timestamp=datetime.now()
+        )
+        
+        # Analyze completeness using conversation history
+        conversation_history = await self.get_conversation_history(discussion_id)
+        completeness = await self._analyze_completeness(conversation_history, answers)
+        
+        if completeness >= 85:  # Threshold for completion
+            await self.memory.postgres.update_discussion_state(
+                discussion_id,
+                status="ready_for_planning",
+                completion_percentage=100,
+                next_action="generate_final_plan"
+            )
+        else:
+            # Need more iteration
+            next_iteration = iteration + 1
+            await self.memory.postgres.update_discussion_state(
+                discussion_id,
+                status="awaiting_answers", 
+                current_iteration=next_iteration,
+                completion_percentage=completeness,
+                next_action="generate_follow_up_questions"
+            )
+    
+    async def get_discussion_status(self, discussion_id):
+        """Get current discussion state and recommended actions"""
+        state = await self.memory.postgres.get_discussion_state(discussion_id)
+        pending_questions = await self.get_pending_questions(discussion_id)
+        
+        return {
+            "status": state.status,
+            "iteration": state.current_iteration,
+            "completion_percentage": state.completion_percentage,
+            "next_action": state.next_action,
+            "has_pending_questions": bool(pending_questions),
+            "current_questions": pending_questions
+        }
+    
+    async def get_conversation_history(self, discussion_id):
+        """Retrieve complete conversation history for context"""
+        state = await self.memory.postgres.get_discussion_state(discussion_id)
+        iterations = await self.memory.postgres.get_discussion_iterations(discussion_id)
+        
+        history = []
+        for iteration in iterations:
+            history.append({
+                "iteration": iteration.iteration_number,
+                "questions": iteration.questions,
+                "answers": iteration.answers,
+                "timestamp": iteration.created_at
+            })
+        return history
+```
+
+### Discussion State Persistence *(Enhanced)*
+
+The enhanced memory system maintains complete discussion state across sessions:
+
+- **State Recovery**: Resume interrupted discussions exactly where left off
+- **Iteration History**: Complete audit trail of all Q&A rounds
+- **Context Preservation**: Maintain full conversation context for analysis
+- **Progress Tracking**: Real-time completion percentage and next actions
+- **Temporal Context**: Track conversation progression over time
 
 ### Agent Integration Interfaces
 

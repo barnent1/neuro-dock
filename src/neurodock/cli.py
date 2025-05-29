@@ -5,6 +5,7 @@ import json
 import yaml
 import subprocess
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 import typer
@@ -281,10 +282,10 @@ framework: auto
         (nd_path / "config.yaml").write_text(config_content)
     
     
-    # Check if we have a previous clarified prompt in the database
-    existing_prompt = store.get_latest_memory("clarified_prompt")
+    # Check if we have a previous user prompt in the database
+    existing_prompt = store.get_latest_memory("user_prompt")
     
-    # If no existing clarified prompt, show Codex-style interface
+    # If no existing user prompt, show Codex-style interface
     if not existing_prompt:
         console = Console()
         
@@ -363,9 +364,18 @@ framework: auto
             # Show Agent 2 reminders
             _show_agent_reminders("discuss", "Discussion completed successfully", {"success": True})
         else:
-            typer.echo("\n❌ Discussion workflow incomplete.")
-            _show_agent_reminders("discuss", "Discussion failed", {"success": False})
-            raise typer.Exit(1)
+            # Check discussion status to provide proper guidance
+            from .discussion import get_discussion_status
+            status = get_discussion_status(nd_path)
+            
+            if status.get('status') in ['questions_pending', 'awaiting_answers']:
+                typer.echo("\n🔄 Discussion in progress - Navigator action required")
+                typer.echo(f"💡 Next action: {status.get('next_action', 'check status')}")
+                typer.echo("📋 Use 'nd discuss-status' to see current questions")
+            else:
+                typer.echo("\n❌ Discussion workflow incomplete.")
+                _show_agent_reminders("discuss", "Discussion failed", {"success": False})
+                raise typer.Exit(1)
             
     except KeyboardInterrupt:
         typer.echo("\n\n⚠️  Discussion interrupted by user.")
@@ -784,7 +794,7 @@ def _execute_task(task, project_info, store, nd_path, build):
         task_description = task.get('description', 'No description')
         task_type = task.get('type', 'file_creation')
         
-        # Create a comprehensive prompt for the LLM
+        # Create a comprehensive prompt for the LLM with flexible action types
         execution_prompt = f"""Execute this development task:
 
 Task: {task_name}
@@ -795,57 +805,105 @@ Project Context:
 Name: {project_info.get('name', 'Unknown Project')}
 Description: {project_info.get('description', 'No description')}
 
-Please generate the necessary code files to complete this task. 
+Choose the best approach to complete this task. You can use shell commands, create files, or both.
+For framework setup tasks (Next.js, React, Django, etc.), prefer scaffolding tools when available.
+
 Return your response as JSON with this structure:
 {{
     "explanation": "Brief explanation of what you're implementing",
-    "files": [
+    "actions": [
         {{
+            "type": "command",
+            "command": "npx create-next-app@latest my-app --typescript --tailwind",
+            "description": "Create Next.js project with TypeScript and Tailwind"
+        }},
+        {{
+            "type": "file",
             "path": "relative/path/to/file.ext",
             "content": "file content here"
         }}
     ]
 }}
 
-Make sure the code is production-ready and follows best practices."""
+Action types available:
+- "command": Execute shell commands (npm install, scaffolding tools, etc.)
+- "file": Create or modify files
+- "directory": Create directories
 
-        # Call LLM to generate code
+Make sure the approach is production-ready and follows modern development best practices."""
+
+        # Call LLM to generate actions
         typer.echo("🤖 Generating code...")
         code_response = call_llm_code(execution_prompt)
         
-        if not code_response or "files" not in code_response:
-            typer.echo("❌ Failed to generate valid code response")
+        # Handle both new format (actions) and legacy format (files)
+        actions = []
+        if code_response and "actions" in code_response:
+            actions = code_response["actions"]
+        elif code_response and "files" in code_response:
+            # Convert legacy format to new format
+            actions = [{"type": "file", "path": f["path"], "content": f["content"]} 
+                      for f in code_response["files"]]
+        
+        if not actions:
+            typer.echo("❌ Failed to generate valid response")
             return False
         
-        # Display what will be created
-        files_to_create = code_response["files"]
-        explanation = code_response.get("explanation", "Code generation completed")
+        explanation = code_response.get("explanation", "Task execution completed")
         
         typer.echo(f"\n📋 {explanation}")
-        typer.echo(f"📁 Creating {len(files_to_create)} file(s):")
+        typer.echo(f"🔧 Executing {len(actions)} action(s):")
         
-        for file_info in files_to_create:
-            file_path = file_info.get("path", "unknown.txt")
-            typer.echo(f"  • {file_path}")
+        # Display planned actions
+        for action in actions:
+            action_type = action.get("type", "unknown")
+            if action_type == "command":
+                typer.echo(f"  • Command: {action.get('command', 'unknown')}")
+            elif action_type == "file":
+                typer.echo(f"  • File: {action.get('path', 'unknown')}")
+            elif action_type == "directory":
+                typer.echo(f"  • Directory: {action.get('path', 'unknown')}")
         
-        # Confirm before creating files
-        if not typer.confirm("\nProceed with file creation?"):
+        # Confirm before executing actions
+        if not typer.confirm("\nProceed with execution?"):
             typer.echo("⚠️ Task cancelled by user.")
             return False
         
-        # Create the files
+        # Execute the actions
         created_files = []
-        for file_info in files_to_create:
-            file_path = Path(file_info.get("path", "unknown.txt"))
-            file_content = file_info.get("content", "")
+        for action in actions:
+            action_type = action.get("type", "unknown")
             
-            # Ensure directory exists
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Write file
-            file_path.write_text(file_content)
-            created_files.append(str(file_path))
-            typer.echo(f"✅ Created: {file_path}")
+            if action_type == "command":
+                command = action.get("command", "")
+                description = action.get("description", command)
+                typer.echo(f"🔧 Running: {description}")
+                
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                if result.returncode == 0:
+                    typer.echo(f"✅ Command completed successfully")
+                    if result.stdout.strip():
+                        typer.echo(f"   Output: {result.stdout.strip()}")
+                else:
+                    typer.echo(f"❌ Command failed: {result.stderr.strip()}")
+                    return False
+                    
+            elif action_type == "file":
+                file_path = Path(action.get("path", "unknown.txt"))
+                file_content = action.get("content", "")
+                
+                # Ensure directory exists
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Write file
+                file_path.write_text(file_content)
+                created_files.append(str(file_path))
+                typer.echo(f"✅ Created: {file_path}")
+                
+            elif action_type == "directory":
+                dir_path = Path(action.get("path", "unknown"))
+                dir_path.mkdir(parents=True, exist_ok=True)
+                typer.echo(f"✅ Created directory: {dir_path}")
         
         # Store task completion in memory
         add_to_memory(
@@ -1857,10 +1915,76 @@ def guide_next_step():
     except Exception as e:
         typer.echo(f"❌ Error providing guidance: {e}")
 
+@app.command("discuss-status")
+def discuss_status():
+    """Check current discussion status and what Navigator should do next."""
+    from .discussion import get_discussion_status
+    
+    root = Path.cwd()
+    nd_path = root / ".neuro-dock"
+    
+    if not nd_path.exists():
+        typer.echo("❌ .neuro-dock directory not found. Run 'nd init' first.")
+        raise typer.Exit(1)
+    
+    status = get_discussion_status(nd_path)
+    
+    typer.echo("🗣️  Discussion Status Report")
+    typer.echo("="*40)
+    typer.echo(f"Status: {status['status']}")
+    typer.echo(f"Iteration: {status['iteration']}")
+    typer.echo(f"Completion: {status['completion_percentage']}%")
+    typer.echo(f"Next Action: {status['next_action']}")
+    
+    if status.get('has_pending_questions'):
+        typer.echo("\n📋 Pending Questions:")
+        typer.echo("-" * 20)
+        typer.echo(status.get('current_questions', 'No questions found'))
+    
+    if status.get('error'):
+        typer.echo(f"\n❌ Error: {status['error']}")
+
+@app.command("discuss-answer")
+def discuss_answer():
+    """Provide answers to discussion questions (used by Navigator)."""
+    from .discussion import provide_discussion_answers
+    
+    root = Path.cwd()
+    nd_path = root / ".neuro-dock"
+    
+    if not nd_path.exists():
+        typer.echo("❌ .neuro-dock directory not found. Run 'nd init' first.")
+        raise typer.Exit(1)
+    
+    # Check if input is piped (from Navigator)
+    if not sys.stdin.isatty():
+        try:
+            answers = sys.stdin.read().strip()
+            if not answers:
+                typer.echo("❌ No answers provided via stdin.")
+                raise typer.Exit(1)
+        except Exception:
+            typer.echo("❌ Failed to read answers from stdin.")
+            raise typer.Exit(1)
+    else:
+        typer.echo("❌ This command expects answers via stdin (pipe input).")
+        typer.echo("💡 Navigator should use: echo 'answers' | nd discuss-answer")
+        raise typer.Exit(1)
+    
+    typer.echo("📝 Processing answers and continuing discussion...")
+    
+    success = provide_discussion_answers(answers, nd_path)
+    
+    if success:
+        typer.echo("✅ Answers processed successfully!")
+        # Show updated status
+        from .discussion import get_discussion_status
+        status = get_discussion_status(nd_path)
+        typer.echo(f"💡 Next action: {status['next_action']}")
+    else:
+        typer.echo("❌ Failed to process answers.")
+        raise typer.Exit(1)
+
 def main():
-    """Main entry point for the NeuroDock CLI."""
+    """Main entry point for the CLI application."""
     app()
-
-
-if __name__ == "__main__":
-    main()

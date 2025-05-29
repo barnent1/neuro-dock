@@ -34,7 +34,7 @@ We're excited that you're interested in contributing to NeuroDock! This document
 3. **Set up database**
    ```bash
    # Run setup command
-   python -m neurodock.cli setup
+   nd setup
    ```
 
 4. **Run tests**
@@ -65,7 +65,7 @@ We're excited that you're interested in contributing to NeuroDock! This document
    pytest tests/integration/
    
    # Test CLI commands
-   python -m neurodock.cli --help
+   nd --help
    ```
 
 4. **Commit your changes**

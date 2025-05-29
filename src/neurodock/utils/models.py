@@ -239,24 +239,42 @@ def call_llm_code(prompt: str, use: Optional[str] = None) -> dict:
 
 CRITICAL: You MUST respond with ONLY valid JSON in the exact format shown below. No other text before or after the JSON.
 
-For real-world project structures:
+For real-world project structures and best practices:
+- Use scaffolding tools when available (npx create-next-app, create-react-app, django-admin startproject, etc.)
 - Python: Use src/package_name/, tests/, requirements.txt, README.md, setup.py
 - Web: Use index.html, css/, js/, components/ folders
 - Node.js: Use package.json, src/, public/, etc.
 
 JSON FORMAT (respond with ONLY this structure):
 {{
+    "actions": [
+        {{
+            "type": "command",
+            "command": "npx create-next-app@latest my-app --typescript --tailwind --eslint --app",
+            "description": "Create Next.js project with TypeScript and Tailwind"
+        }},
+        {{
+            "type": "file",
+            "path": "custom-config.js",
+            "content": "// Custom configuration\\nmodule.exports = {{ ... }};"
+        }},
+        {{
+            "type": "directory",
+            "path": "custom-folder"
+        }}
+    ],
+    "explanation": "Set up Next.js project using scaffolding tool and added custom configuration."
+}}
+
+LEGACY FORMAT (also supported):
+{{
     "files": [
         {{
             "path": "calculator.py",
-            "content": "def add(x, y):\\n    return x + y\\n\\ndef subtract(x, y):\\n    return x - y"
-        }},
-        {{
-            "path": "README.md", 
-            "content": "# Calculator\\n\\nA simple Python calculator."
+            "content": "def add(x, y):\\n    return x + y"
         }}
     ],
-    "explanation": "Created a basic Python calculator with add/subtract functions and documentation."
+    "explanation": "Created a basic Python calculator."
 }}
 
 Respond with ONLY the JSON above. No additional text or explanations outside the JSON.
@@ -270,7 +288,11 @@ Respond with ONLY the JSON above. No additional text or explanations outside the
         # Strategy 1: Try parsing the entire response as JSON
         try:
             response_data = json.loads(raw_response.strip())
-            if "files" in response_data and "explanation" in response_data:
+            # Check for new actions format
+            if "actions" in response_data and "explanation" in response_data:
+                return response_data
+            # Check for legacy files format
+            elif "files" in response_data and "explanation" in response_data:
                 return response_data
         except json.JSONDecodeError:
             pass
@@ -283,8 +305,9 @@ Respond with ONLY the JSON above. No additional text or explanations outside the
             json_part = raw_response[start_idx:end_idx]
             response_data = json.loads(json_part)
             
-            # Validate the expected structure
-            if "files" in response_data and "explanation" in response_data:
+            # Validate the expected structure (both new and legacy formats)
+            if ("actions" in response_data and "explanation" in response_data) or \
+               ("files" in response_data and "explanation" in response_data):
                 return response_data
         
         # Strategy 3: Look for code blocks in the response and create a simple structure

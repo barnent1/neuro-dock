@@ -19,70 +19,47 @@ from .db import get_store
 
 def run_interactive_discussion(nd_path: Path) -> bool:
     """
-    Run the complete interactive discussion workflow.
+    Run the complete interactive discussion workflow with iterative conversation support.
+    Supports multiple rounds of Q&A between Developer → Navigator → NeuroDock.
     
     Args:
         nd_path: Path to the .neuro-dock directory
         
     Returns:
-        True if successful, False otherwise
+        True if completely successful (ready for planning), False otherwise
     """
     try:
         # Get database store for this project
         store = get_store(str(nd_path.parent))
         
-        # Load initial prompt from database
-        initial_prompt_entry = store.get_latest_memory("user_prompt")
-        if not initial_prompt_entry:
-            typer.echo("❌ No user prompt found in database.")
-            typer.echo("The discuss command should have already captured your initial prompt.")
-            typer.echo("💡 This might indicate a database connection issue.")
-            typer.echo("   Try running 'nd setup' to configure your database.")
+        # Check for existing conversation state
+        conversation_state = _load_discussion_state(store)
+        
+        # Debug: ensure conversation_state is valid
+        if not isinstance(conversation_state, dict):
+            typer.echo(f"❌ Invalid conversation state type: {type(conversation_state)}")
             return False
         
-        # Extract text from database entry
-        if isinstance(initial_prompt_entry, dict):
-            initial_prompt = initial_prompt_entry.get('text', '')
+        if "status" not in conversation_state:
+            typer.echo(f"❌ Missing 'status' in conversation state: {conversation_state}")
+            return False
+        
+        if conversation_state["status"] == "new":
+            # Start new discussion
+            return _start_new_discussion(store, nd_path)
+        elif conversation_state["status"] == "questions_pending":
+            # Continue with questions from NeuroDock
+            return _handle_pending_questions(store, nd_path, conversation_state)
+        elif conversation_state["status"] == "awaiting_answers":
+            # Process answers and continue iteration
+            return _process_answers_and_continue(store, nd_path, conversation_state)
+        elif conversation_state["status"] == "ready_for_planning":
+            # Generate final task plan
+            return _generate_final_plan(store, nd_path, conversation_state)
         else:
-            initial_prompt = str(initial_prompt_entry) if initial_prompt_entry else ''
-        
-        if not initial_prompt.strip():
-            typer.echo("❌ The user prompt in database is empty.")
+            typer.echo(f"❌ Unknown discussion state: {conversation_state['status']}")
             return False
-            return False
-        
-        typer.echo("🤖 Starting interactive discussion to clarify your project goals...")
-        typer.echo(f"📝 Initial prompt: {initial_prompt}")
-        typer.echo()
-        
-        # Step 1: Clarification dialogue
-        discussion_history = []
-        clarified_prompt = _run_clarification_dialogue(initial_prompt, discussion_history, nd_path)
-        
-        if not clarified_prompt:
-            typer.echo("❌ Discussion was cancelled or failed.")
-            return False
-        
-        # Step 2: Task generation
-        task_plan = _generate_task_plan(clarified_prompt, nd_path)
-        
-        if not task_plan:
-            typer.echo("❌ Task plan generation failed.")
-            return False
-        
-        # Step 3: Save results to database instead of flat files
-        _save_discussion_results(store, discussion_history, clarified_prompt, task_plan)
-        
-        typer.echo("\n🎉 Discussion completed successfully!")
-        typer.echo("💡 Next steps:")
-        typer.echo("  • Review task plan: neuro-dock tasks")
-        typer.echo("  • Run 'neuro-dock run' to execute tasks interactively")
-        
-        return True
-        
-    except KeyboardInterrupt:
-        typer.echo("\n⚠️  Discussion interrupted by user.")
-        return False
+            
     except Exception as e:
         typer.echo(f"❌ Discussion failed: {e}", err=True)
         return False
@@ -93,19 +70,41 @@ def _run_clarification_dialogue(initial_prompt: str, discussion_history: List[Di
     
     typer.echo("🔍 Generating clarifying questions...")
     
+    # Get project context and memory to inform question generation
+    project_context = ""
+    try:
+        # Check for existing project context or framework detection
+        framework = _detect_project_framework(nd_path)
+        if framework:
+            project_context += f"\nDetected project framework: {framework}"
+        
+        # Search for relevant memory context
+        memory_results = search_memory(initial_prompt, limit=3)
+        if memory_results:
+            project_context += f"\nRelevant project memory: {memory_results}"
+    except Exception:
+        # Continue without context if there are issues
+        pass
+    
     # Generate clarifying questions using LLM with memory context
-    questions_prompt = f"""You are helping clarify a software project specification. The user provided this initial description:
+    questions_prompt = f"""You are an expert software development consultant helping to clarify a project specification. The user provided this initial description:
 
 "{initial_prompt}"
 
-Generate 3-5 specific clarifying questions to better understand:
-- The target users and use cases
-- Technical requirements and constraints  
-- Key features and functionality
-- Deployment and scalability needs
-- Integration requirements
+{project_context}
 
-Format as a numbered list of questions. Be specific and actionable."""
+Analyze this project description and generate 3-5 highly specific clarifying questions that are most relevant for THIS particular project. 
+
+Consider what's already clear from their description and focus your questions on the gaps and ambiguities that would be critical for implementation. The questions should be:
+
+1. **Project-specific**: Tailored to the actual type of application/system they're describing
+2. **Implementation-focused**: Help determine concrete technical decisions
+3. **Priority-driven**: Address the most important unknowns first
+4. **Context-aware**: Build on what they've already told you
+
+Do NOT ask generic questions that apply to every software project. Instead, analyze their specific description and ask the questions that would be most valuable for understanding and implementing THEIR vision.
+
+Format as a numbered list of questions."""
 
     try:
         questions_response = call_llm(questions_prompt)
@@ -126,36 +125,27 @@ Format as a numbered list of questions. Be specific and actionable."""
         typer.echo(f"❌ Failed to generate questions: {e}", err=True)
         return None
     
-    # Collect user answers
-    typer.echo("\n📝 Please answer these questions to clarify your project:")
-    typer.echo("(You can answer all at once or provide brief responses to each)")
+    # Instead of collecting user input in terminal, return questions to Navigator
+    # The Navigator should handle these questions intelligently
+    typer.echo("\n📝 Questions generated for Navigator to handle:")
+    typer.echo("(Navigator will either ask you these questions or auto-answer based on context)")
     typer.echo()
     
-    # Check if input is available from stdin (piped input)
-    if not sys.stdin.isatty():
-        # For piped input, try to read remaining stdin
-        try:
-            user_answers = sys.stdin.read().strip()
-            if user_answers:
-                typer.echo(f"Your answers: {user_answers}")
-            else:
-                # No additional input - use a simple default response for piped mode
-                user_answers = "We will keep it basic and no frills as specified."
-                typer.echo(f"Your answers: {user_answers} (auto-generated for piped input)")
-        except Exception:
-            # Fallback for piped input
-            user_answers = "We will keep it basic and no frills."
-            typer.echo(f"Your answers: {user_answers} (fallback for piped input)")
-    else:
-        # Interactive mode
-        try:
-            user_answers = typer.prompt("Your answers")
-        except (EOFError, KeyboardInterrupt):
-            typer.echo("\n❌ Input cancelled.")
-            return None
+    # Try to auto-answer questions based on context and memory
+    user_answers = _auto_answer_questions(initial_prompt, questions_response, project_context)
     
-    if not user_answers.strip():
-        typer.echo("❌ No answers provided.")
+    if user_answers:
+        typer.echo(f"✅ Auto-answered based on context: {user_answers[:100]}...")
+    else:
+        # Return questions to Navigator instead of waiting for terminal input
+        typer.echo("🔄 Questions returned to Navigator for handling")
+        # Save questions to memory for Navigator to process
+        try:
+            store = get_store(str(nd_path.parent))
+            store.add_memory(questions_response, "clarification_questions")
+            typer.echo("💾 Questions saved to memory for Navigator processing")
+        except Exception:
+            pass
         return None
     discussion_history.append({
         "role": "user",
@@ -593,3 +583,452 @@ def _count_tasks_in_plan(plan_data: Dict[str, Any]) -> int:
     elif "tasks" in plan_data:
         count = len(plan_data["tasks"])
     return count
+
+
+def _auto_answer_questions(initial_prompt: str, questions: str, project_context: str) -> Optional[str]:
+    """
+    Try to auto-answer clarification questions based on context and memory.
+    Returns answers if confident, None if Navigator should handle questions.
+    """
+    try:
+        # Use LLM to determine if questions can be auto-answered
+        auto_answer_prompt = f"""You are an intelligent project assistant. Given this project description and context, determine if you can confidently answer the clarification questions automatically.
+
+PROJECT DESCRIPTION: "{initial_prompt}"
+
+PROJECT CONTEXT: {project_context}
+
+CLARIFICATION QUESTIONS: {questions}
+
+INSTRUCTIONS:
+1. Only auto-answer if you can make reasonable assumptions based on the project description
+2. For a basic/simple project request, provide sensible defaults
+3. If the questions require specific user input that can't be inferred, return "NAVIGATOR_HANDLE"
+4. If you can answer, provide brief, practical answers that align with the project description
+
+Your response should either be:
+- "NAVIGATOR_HANDLE" (if questions need user input)
+- A brief set of answers addressing the questions in order"""
+
+        response = call_llm(auto_answer_prompt)
+        
+        if response and "NAVIGATOR_HANDLE" not in response.upper():
+            return response
+        else:
+            return None
+            
+    except Exception:
+        return None
+
+
+def _load_discussion_state(store) -> Dict[str, Any]:
+    """Load current discussion state from database."""
+    try:
+        state = store.get_latest_memory("discussion_state")
+        if state:
+            if isinstance(state, dict):
+                # Handle database object format with 'text' field
+                if 'text' in state:
+                    return json.loads(state['text'])
+                else:
+                    return state
+            elif isinstance(state, str):
+                return json.loads(state)
+        
+        # Default new state
+        return {
+            "status": "new",
+            "iteration": 0,
+            "questions": [],
+            "answers": [],
+            "conversation_history": [],
+            "unresolved_topics": []
+        }
+    except Exception as e:
+        typer.echo(f"❌ Error loading discussion state: {e}")
+        return {"status": "new", "iteration": 0}
+
+
+def _start_new_discussion(store, nd_path: Path) -> bool:
+    """Start a new discussion process."""
+    # Load initial prompt from database
+    initial_prompt_entry = store.get_latest_memory("user_prompt")
+    if not initial_prompt_entry:
+        typer.echo("❌ No user prompt found in database.")
+        typer.echo("💡 Use Navigator to provide your project description first.")
+        return False
+    
+    # Extract text from database entry
+    if isinstance(initial_prompt_entry, dict):
+        initial_prompt = initial_prompt_entry.get('text', '')
+    else:
+        initial_prompt = str(initial_prompt_entry) if initial_prompt_entry else ''
+    
+    if not initial_prompt.strip():
+        typer.echo("❌ The user prompt in database is empty.")
+        return False
+    
+    typer.echo("🤖 Starting interactive discussion to clarify your project goals...")
+    typer.echo(f"📝 Initial prompt: {initial_prompt}")
+    typer.echo()
+    
+    # Generate first round of questions
+    questions = _generate_clarifying_questions(initial_prompt, [], nd_path)
+    if not questions:
+        typer.echo("❌ Failed to generate initial questions.")
+        return False
+    
+    # Save discussion state
+    discussion_state = {
+        "status": "questions_pending",
+        "iteration": 1,
+        "initial_prompt": initial_prompt,
+        "questions": questions,
+        "answers": [],
+        "conversation_history": [
+            {
+                "iteration": 1,
+                "questions": questions,
+                "timestamp": datetime.now().isoformat()
+            }
+        ],
+        "unresolved_topics": []
+    }
+    
+    store.add_memory(json.dumps(discussion_state), "discussion_state")
+    
+    # Display questions for Navigator to handle
+    typer.echo("\n" + "="*60)
+    typer.echo("❓ CLARIFYING QUESTIONS (for Navigator to process):")
+    typer.echo("="*60)
+    typer.echo(questions)
+    typer.echo("="*60)
+    typer.echo("\n🔄 Questions ready for Navigator to handle with Developer")
+    typer.echo("💡 Navigator should ask these questions and then provide answers")
+    
+    # Return False because discussion is not complete - it's just starting
+    # Navigator needs to collect answers before we can continue
+    return False
+
+
+def _handle_pending_questions(store, nd_path: Path, conversation_state: Dict) -> bool:
+    """Handle case where questions are pending Navigator/Developer response."""
+    typer.echo("📋 Questions are pending Developer responses via Navigator...")
+    typer.echo("🔄 Current questions:")
+    typer.echo("\n" + "="*60)
+    typer.echo(conversation_state.get("questions", "No questions found"))
+    typer.echo("="*60)
+    typer.echo("\n💡 Navigator should collect answers and continue the process")
+    # Return False because we're still waiting for Navigator input
+    return False
+
+
+def _process_answers_and_continue(store, nd_path: Path, conversation_state: Dict) -> bool:
+    """Process answers and determine if more questions are needed."""
+    # This would be called after Navigator provides answers
+    answers = conversation_state.get("latest_answers", "")
+    previous_qa = conversation_state.get("conversation_history", [])
+    
+    # Analyze if we need more clarification
+    need_more_questions = _analyze_completeness(
+        conversation_state.get("initial_prompt", ""),
+        previous_qa,
+        answers
+    )
+    
+    if need_more_questions:
+        # Generate follow-up questions
+        follow_up_questions = _generate_follow_up_questions(
+            conversation_state.get("initial_prompt", ""),
+            previous_qa,
+            answers,
+            nd_path
+        )
+        
+        if follow_up_questions:
+            # Update discussion state for another iteration
+            conversation_state["iteration"] += 1
+            conversation_state["questions"] = follow_up_questions
+            conversation_state["conversation_history"].append({
+                "iteration": conversation_state["iteration"],
+                "previous_answers": answers,
+                "questions": follow_up_questions,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            store.add_memory(json.dumps(conversation_state), "discussion_state")
+            
+            typer.echo(f"\n🔄 Iteration {conversation_state['iteration']}: Additional questions needed")
+            typer.echo("\n" + "="*60)
+            typer.echo("❓ FOLLOW-UP QUESTIONS:")
+            typer.echo("="*60)
+            typer.echo(follow_up_questions)
+            typer.echo("="*60)
+            
+            return True
+    
+    # Discussion is complete, ready for planning
+    conversation_state["status"] = "ready_for_planning"
+    store.add_memory(json.dumps(conversation_state), "discussion_state")
+    
+    typer.echo("\n✅ Discussion complete! All questions resolved.")
+    typer.echo("🎯 Ready to generate comprehensive task plan...")
+    
+    return _generate_final_plan(store, nd_path, conversation_state)
+
+
+def _generate_final_plan(store, nd_path: Path, conversation_state: Dict) -> bool:
+    """Generate final task plan from complete conversation history."""
+    # Compile complete specification from all Q&A iterations
+    complete_spec = _compile_final_specification(conversation_state)
+    
+    # Generate task plan
+    task_plan = _generate_task_plan(complete_spec, nd_path)
+    
+    if not task_plan:
+        typer.echo("❌ Task plan generation failed.")
+        return False
+    
+    # Save results
+    _save_discussion_results(store, conversation_state["conversation_history"], complete_spec, task_plan)
+    
+    typer.echo("\n🎉 Discussion and planning completed successfully!")
+    typer.echo("💡 Next steps:")
+    typer.echo("  • Review task plan: nd plan")
+    typer.echo("  • Start executing tasks: nd run")
+    
+    return True
+
+
+def _generate_clarifying_questions(initial_prompt: str, previous_qa: List, nd_path: Path) -> Optional[str]:
+    """Generate context-aware clarifying questions."""
+    # Get project context and memory to inform question generation
+    project_context = ""
+    try:
+        framework = _detect_project_framework(nd_path)
+        if framework:
+            project_context += f"\nDetected project framework: {framework}"
+        
+        memory_results = search_memory(initial_prompt, limit=3)
+        if memory_results:
+            project_context += f"\nRelevant project memory: {memory_results}"
+    except Exception:
+        pass
+    
+    questions_prompt = f"""You are an expert software development consultant helping to clarify a project specification. 
+
+PROJECT DESCRIPTION: "{initial_prompt}"
+
+PROJECT CONTEXT: {project_context}
+
+PREVIOUS Q&A ITERATIONS: {json.dumps(previous_qa, indent=2) if previous_qa else "None - this is the first iteration"}
+
+Generate 3-5 highly specific clarifying questions that are most relevant for THIS particular project. Focus on:
+
+1. **Critical Implementation Details**: What's needed to build this successfully?
+2. **User Experience**: How should users interact with the system?
+3. **Technical Requirements**: What constraints or preferences exist?
+4. **Scope Definition**: What's in/out of scope for the initial version?
+5. **Success Criteria**: How will we know this project is complete?
+
+Make questions project-specific, not generic. Address the most important unknowns that would impact development decisions.
+
+Format as a numbered list of questions."""
+
+    try:
+        return call_llm(questions_prompt)
+    except Exception as e:
+        typer.echo(f"❌ Failed to generate questions: {e}")
+        return None
+
+
+def _generate_follow_up_questions(initial_prompt: str, previous_qa: List, latest_answers: str, nd_path: Path) -> Optional[str]:
+    """Generate follow-up questions based on previous answers."""
+    follow_up_prompt = f"""Based on this project discussion so far, determine if additional clarification is needed.
+
+ORIGINAL PROJECT: "{initial_prompt}"
+
+PREVIOUS Q&A HISTORY: {json.dumps(previous_qa, indent=2)}
+
+LATEST ANSWERS: "{latest_answers}"
+
+Analyze the conversation and determine if there are any:
+1. Ambiguous or unclear responses that need clarification
+2. Missing critical information for implementation
+3. Contradictions that need resolution
+4. Technical details that weren't addressed
+
+If additional questions are needed, generate 2-4 specific follow-up questions.
+If the discussion is sufficiently complete, respond with "DISCUSSION_COMPLETE".
+
+Focus only on the most critical gaps that would impact development."""
+
+    try:
+        response = call_llm(follow_up_prompt)
+        if "DISCUSSION_COMPLETE" in response.upper():
+            return None
+        return response
+    except Exception as e:
+        typer.echo(f"❌ Failed to generate follow-up questions: {e}")
+        return None
+
+
+def _analyze_completeness(initial_prompt: str, conversation_history: List, latest_answers: str) -> bool:
+    """Analyze if the discussion is complete or needs more iteration."""
+    completeness_prompt = f"""Analyze this project discussion for completeness:
+
+ORIGINAL PROJECT: "{initial_prompt}"
+
+CONVERSATION HISTORY: {json.dumps(conversation_history, indent=2)}
+
+LATEST ANSWERS: "{latest_answers}"
+
+Determine if the discussion provides sufficient information to:
+1. Understand the project goals and scope
+2. Identify core features and functionality
+3. Make technical implementation decisions
+4. Define success criteria
+5. Begin detailed task planning
+
+Respond with either:
+- "COMPLETE" if discussion provides sufficient clarity for development
+- "NEEDS_MORE" if critical information is still missing or unclear"""
+
+    try:
+        response = call_llm(completeness_prompt)
+        return "NEEDS_MORE" in response.upper()
+    except Exception:
+        # If analysis fails, assume complete to avoid infinite loops
+        return False
+
+
+def _compile_final_specification(conversation_state: Dict) -> str:
+    """Compile complete project specification from all conversation iterations."""
+    compile_prompt = f"""Based on this complete project discussion, create a comprehensive project specification:
+
+ORIGINAL PROJECT REQUEST: "{conversation_state.get('initial_prompt', '')}"
+
+COMPLETE Q&A HISTORY: {json.dumps(conversation_state.get('conversation_history', []), indent=2)}
+
+Create a detailed project specification that includes:
+1. Project Overview and Goals
+2. Target Users and Use Cases
+3. Core Features and Functionality (prioritized)
+4. Technical Requirements and Constraints
+5. Success Criteria and Definition of Done
+6. Implementation Approach and Architecture
+7. Key Assumptions and Dependencies
+
+Be specific and actionable. This specification will be used to generate implementation tasks."""
+
+    try:
+        return call_llm(compile_prompt)
+    except Exception as e:
+        typer.echo(f"❌ Failed to compile specification: {e}")
+        return conversation_state.get('initial_prompt', '')
+
+
+def provide_discussion_answers(answers: str, nd_path: Path) -> bool:
+    """
+    Allow Navigator to provide answers to discussion questions and continue iteration.
+    This function is called by Navigator when Developer provides answers.
+    
+    Args:
+        answers: Developer's answers to the current questions
+        nd_path: Path to the .neuro-dock directory
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        store = get_store(str(nd_path.parent))
+        conversation_state = _load_discussion_state(store)
+        
+        if conversation_state["status"] != "questions_pending":
+            typer.echo(f"❌ No pending questions. Current status: {conversation_state['status']}")
+            return False
+        
+        # Store the answers
+        conversation_state["latest_answers"] = answers
+        conversation_state["status"] = "awaiting_answers"
+        
+        # Add answers to conversation history
+        if conversation_state.get("conversation_history"):
+            current_iteration = conversation_state["conversation_history"][-1]
+            current_iteration["answers"] = answers
+            current_iteration["answered_timestamp"] = datetime.now().isoformat()
+        
+        store.add_memory(json.dumps(conversation_state), "discussion_state")
+        
+        typer.echo("✅ Answers received! Processing and determining next steps...")
+        
+        # Continue the discussion process
+        return _process_answers_and_continue(store, nd_path, conversation_state)
+        
+    except Exception as e:
+        typer.echo(f"❌ Failed to process answers: {e}")
+        return False
+
+def get_discussion_status(nd_path: Path) -> Dict[str, Any]:
+    """
+    Get current discussion status for Navigator to understand what's needed.
+    
+    Args:
+        nd_path: Path to the .neuro-dock directory
+        
+    Returns:
+        Dictionary with current discussion status and next actions
+    """
+    try:
+        store = get_store(str(nd_path.parent))
+        conversation_state = _load_discussion_state(store)
+        
+        status_info = {
+            "status": conversation_state.get("status", "new"),
+            "iteration": conversation_state.get("iteration", 0),
+            "has_pending_questions": conversation_state.get("status") == "questions_pending",
+            "current_questions": conversation_state.get("questions", ""),
+            "total_iterations": len(conversation_state.get("conversation_history", [])),
+            "next_action": _determine_next_action(conversation_state),
+            "completion_percentage": _estimate_completion(conversation_state)
+        }
+        
+        return status_info
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "next_action": "restart_discussion"
+        }
+
+def _determine_next_action(conversation_state: Dict) -> str:
+    """Determine what Navigator should do next."""
+    status = conversation_state.get("status", "new")
+    
+    if status == "new":
+        return "run_discuss_command"
+    elif status == "questions_pending":
+        return "ask_developer_questions"
+    elif status == "awaiting_answers":
+        return "provide_answers_to_system"
+    elif status == "ready_for_planning":
+        return "generate_task_plan"
+    else:
+        return "check_discussion_state"
+
+def _estimate_completion(conversation_state: Dict) -> int:
+    """Estimate discussion completion percentage."""
+    status = conversation_state.get("status", "new")
+    iterations = conversation_state.get("iteration", 0)
+    
+    if status == "new":
+        return 0
+    elif status == "questions_pending" and iterations == 1:
+        return 25
+    elif status == "questions_pending" and iterations > 1:
+        return 50 + min(iterations * 10, 25)
+    elif status == "ready_for_planning":
+        return 90
+    else:
+        return min(iterations * 20, 80)
