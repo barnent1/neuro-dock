@@ -76,12 +76,13 @@ async def main():
     logger.info("🚀 Starting NeuroDock MCP Server as background service...")
     
     try:
-        # For background service, we'll use stdio transport but with proper async handling
+        # For background service, we'll use stdio transport
         logger.info("MCP Server ready and listening...")
-        await mcp.run_async(transport='stdio')
+        mcp.run()
     except Exception as e:
         logger.error(f"Server error: {e}")
         raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Use sync run instead of async for stdio
+    mcp.run()

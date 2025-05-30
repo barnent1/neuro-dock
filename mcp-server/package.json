@@ -1,7 +1,7 @@
 {
   "name": "@neurodock/mcp-server",
-  "version": "2.0.0",
-  "description": "Model Context Protocol server for NeuroDock project management",
+  "version": "3.0.0",
+  "description": "AI Agent Operating System - Model Context Protocol server with cognitive framework for intelligent project management",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
