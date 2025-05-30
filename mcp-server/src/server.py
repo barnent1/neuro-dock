@@ -427,16 +427,15 @@ async def neurodock_create_task(description: str, priority: str = "medium", cate
             "updated_at": datetime.now()
         }
         
-        task_id = store.add_task(task_data)
+        task_id = store.add_task(
+            title=description,  # Use description as title
+            description=description,
+            complexity="unknown"
+        )
         
         # Also add creation to memory for context
         memory_content = f"Created new task: {description} (Priority: {priority}, Category: {category})"
-        store.add_memory({
-            "type": "task_creation",
-            "text": memory_content,
-            "metadata": {"task_id": task_id, "action": "create_task"},
-            "created_at": datetime.now()
-        })
+        store.add_memory(memory_content, "task_creation")
         
         return f"✅ Task created successfully with ID {task_id}\nTitle: {description}\nPriority: {priority}\nCategory: {category}"
         
@@ -460,16 +459,8 @@ async def neurodock_add_memory(content: str, category: str = "note", tags: List[
         return "❌ NeuroDock database not available. Run 'nd setup' to configure the database connection."
     
     try:
-        # Store in NeuroDock memory system
-        memory_data = {
-            "type": category,
-            "text": content,
-            "tags": tags,
-            "metadata": {"source": "mcp_server", "category": category},
-            "created_at": datetime.now()
-        }
-        
-        memory_id = store.add_memory(memory_data)
+        # Store in NeuroDock memory system using correct parameters
+        memory_id = store.add_memory(content, category)
         
         # For Qdrant vector search integration if available
         try:
@@ -682,18 +673,8 @@ async def neurodock_start_discussion(topic: str, context: str = "", participants
         # Store discussion initiation in memory
         store = get_neurodock_store()
         if store:
-            memory_data = {
-                "type": "discussion_start",
-                "text": f"Started discussion on: {topic}",
-                "metadata": {
-                    "topic": topic,
-                    "context": context,
-                    "participants": participants,
-                    "discussion_id": discussion_result.get("discussion_id")
-                },
-                "created_at": datetime.now()
-            }
-            store.add_memory(memory_data)
+            memory_text = f"Started discussion: {topic} with participants {participants}"
+            store.add_memory(memory_text, "discussion_start")
         
         return f"💬 Discussion started successfully!\n\n{json.dumps(discussion_result, indent=2, default=str)}"
         
@@ -1056,11 +1037,10 @@ async def neurodock_add_task(
         store = get_neurodock_store()
         if store:
             # Store in database
-            task_id = store.create_task(
+            task_id = store.add_task(
                 title=title,
                 description=description,
-                priority=priority,
-                assign_to=assign_to
+                complexity=complexity_analysis.get('complexity_rating', 'unknown')
             )
             task_data['id'] = task_id
         
@@ -1534,7 +1514,7 @@ async def neurodock_auto_memory_update(
             "created_at": datetime.now().isoformat()
         }
         
-        memory_id = store.add_memory(memory_data)
+        memory_id = store.add_memory(memory_content, "auto_interaction")
         
         # Also try to add to vector store for semantic search
         try:
@@ -1751,15 +1731,7 @@ async def neurodock_auto_decompose(
         store = get_neurodock_store()
         if store:
             memory_content = f"Auto-decomposition analysis for: {task_description}\nComplexity: {complexity_score}/10\nDecomposed: {should_decompose}"
-            store.add_memory({
-                "content": memory_content,
-                "type": "auto_decomposition",
-                "project": current_project_name,
-                "task_description": task_description,
-                "complexity_score": complexity_score,
-                "auto_decomposed": should_decompose,
-                "created_at": datetime.now().isoformat()
-            })
+            store.add_memory(memory_content, "auto_decomposition")
         
         return json.dumps(result)
         
@@ -1874,16 +1846,7 @@ async def neurodock_plan(
         
         # Store planning session in memory
         memory_content = f"Project Planning Session: {project_goal}\nHorizon: {planning_horizon}\nPhases: {len(planning_framework['suggested_phases'])}\nTasks Created: {len(created_tasks)}"
-        store.add_memory({
-            "content": memory_content,
-            "type": "project_planning",
-            "project": current_project_name,
-            "project_goal": project_goal,
-            "planning_horizon": planning_horizon,
-            "phases_count": len(planning_framework["suggested_phases"]),
-            "tasks_created": len(created_tasks),
-            "created_at": datetime.now().isoformat()
-        })
+        store.add_memory(memory_content, "project_planning")
         
         result = {
             "success": True,
@@ -2027,14 +1990,8 @@ async def neurodock_cognitive_loop() -> str:
         }
         
         # Store cognitive loop execution in memory
-        store.add_memory({
-            "content": f"Cognitive loop executed for project: {current_project}",
-            "type": "cognitive_loop",
-            "project": current_project,
-            "context_summary": cognitive_context["context_analysis"],
-            "recommendations_count": len(recommendations),
-            "created_at": datetime.now().isoformat()
-        })
+        memory_content = f"Cognitive loop executed for project: {current_project}"
+        store.add_memory(memory_content, "cognitive_loop")
         
         return json.dumps(cognitive_context, default=str)
         
@@ -2153,15 +2110,8 @@ async def neurodock_agent_behavior(
         # Store behavior configuration
         store = get_neurodock_store()
         if store and current_project:
-            store.add_memory({
-                "content": f"Agent behavior configured: {behavior_mode} mode, {focus_area} focus",
-                "type": "agent_behavior_config",
-                "project": current_project,
-                "behavior_mode": behavior_mode,
-                "focus_area": focus_area,
-                "verbosity": verbosity,
-                "created_at": datetime.now().isoformat()
-            })
+            memory_content = f"Agent behavior configured: {behavior_mode} mode, {focus_area} focus"
+            store.add_memory(memory_content, "agent_behavior_config")
         
         return json.dumps(behavior_config, default=str)
         
@@ -2192,13 +2142,6 @@ def initialize_neurodock():
             
     except Exception as e:
         print(f"⚠️  NeuroDock initialization warning: {e}")
-
-if __name__ == "__main__":
-    # Initialize NeuroDock systems
-    initialize_neurodock()
-    
-    # Run the FastMCP server
-    mcp.run(transport='stdio')
 
 # ==============================================================================
 # UI GENERATION TOOLS - V0.dev & Loveable Integration
@@ -2287,11 +2230,7 @@ async def generate_ui_component(
                 "preview_approved": False
             }
             
-            store.add_memory({
-                "content": f"UI Component Generation Request: {component_description}",
-                "type": "ui_generation",
-                "metadata": component_request
-            })
+            store.add_memory(f"UI Component Generation Request: {component_description}", "ui_generation")
         
         result = {
             "status": "preview_required",
@@ -2860,3 +2799,14 @@ async def cancel_ui_generation(generation_id: str, reason: str = "User cancelled
 # ==============================================================================
 # END UI GENERATION TOOLS
 # ==============================================================================
+
+# ==============================================================================
+# MAIN FUNCTION - MCP SERVER STARTUP
+# ==============================================================================
+
+if __name__ == "__main__":
+    # Initialize NeuroDock systems
+    initialize_neurodock()
+    
+    # Run the FastMCP server
+    mcp.run(transport='stdio')
