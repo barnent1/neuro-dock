@@ -32,7 +32,8 @@ try:
     # Import CLI functions for project management
     from neurodock.cli import (
         get_current_project, set_current_project, create_project,
-        list_available_projects, get_project_metadata, update_project_metadata
+        list_available_projects, get_project_metadata, update_project_metadata,
+        analyze_task_complexity
     )
     NEURODOCK_AVAILABLE = True
 except ImportError as e:
@@ -869,6 +870,479 @@ async def neurodock_get_discussion_status(discussion_id: str = "", include_histo
         
     except Exception as e:
         return f"❌ Error retrieving discussion status: {str(e)}"
+
+# ==============================================================================
+# PROJECT MANAGEMENT TOOLS - Multi-project Support
+# ==============================================================================
+
+@mcp.tool()
+async def neurodock_add_project(name: str, description: str = "") -> str:
+    """Create a new isolated project workspace with metadata tracking.
+    
+    Args:
+        name: Project name (unique identifier)
+        description: Optional project description
+    
+    Returns:
+        JSON string with project creation status and metadata
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Check if project already exists
+        existing_projects = list_available_projects()
+        if any(p['name'] == name for p in existing_projects):
+            return json.dumps({
+                "error": f"Project '{name}' already exists",
+                "existing_projects": [p['name'] for p in existing_projects]
+            })
+        
+        # Create the project
+        metadata = create_project(name, description)
+        
+        return json.dumps({
+            "success": True,
+            "project": metadata,
+            "message": f"✅ Project '{name}' created successfully"
+        })
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to create project: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_list_projects() -> str:
+    """List all available projects with their metadata and statistics.
+    
+    Returns:
+        JSON string with project list and details
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        projects = list_available_projects()
+        current_project = get_current_project()
+        
+        return json.dumps({
+            "projects": projects,
+            "current_project": current_project,
+            "total_projects": len(projects),
+            "message": f"Found {len(projects)} projects"
+        })
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to list projects: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_set_active_project(name: str) -> str:
+    """Switch to a different project context.
+    
+    Args:
+        name: Name of the project to make active
+    
+    Returns:
+        JSON string with switch status and project metadata
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Check if project exists
+        projects = list_available_projects()
+        project_names = [p['name'] for p in projects]
+        
+        if name not in project_names:
+            return json.dumps({
+                "error": f"Project '{name}' not found",
+                "available_projects": project_names
+            })
+        
+        # Set as active project
+        set_current_project(name)
+        
+        # Get project metadata
+        metadata = get_project_metadata(name)
+        
+        return json.dumps({
+            "success": True,
+            "active_project": name,
+            "metadata": metadata,
+            "message": f"✅ Switched to project '{name}'"
+        })
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to switch project: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_get_project_status(project_name: str = "") -> str:
+    """Get comprehensive status and metadata for a project.
+    
+    Args:
+        project_name: Project name (defaults to current project)
+    
+    Returns:
+        JSON string with detailed project status
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        if not project_name:
+            project_name = get_current_project()
+            
+        if not project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Get project metadata
+        metadata = get_project_metadata(project_name)
+        
+        if not metadata:
+            return json.dumps({"error": f"Project '{project_name}' not found"})
+        
+        # Calculate project statistics
+        current_project = get_current_project()
+        is_active = project_name == current_project
+        
+        return json.dumps({
+            "project": metadata,
+            "is_active": is_active,
+            "current_project": current_project,
+            "status": "active" if is_active else "inactive",
+            "message": f"Project '{project_name}' status retrieved"
+        })
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to get project status: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_agent_info() -> str:
+    """Get current agent context and project information - automatically called for cognitive context.
+    
+    This tool provides essential context about the current project and agent state.
+    
+    Returns:
+        JSON string with agent context and project information
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        current_project = get_current_project()
+        
+        if current_project:
+            metadata = get_project_metadata(current_project)
+            projects_list = list_available_projects()
+        else:
+            metadata = None
+            projects_list = list_available_projects()
+        
+        context = {
+            "agent_system": "NeuroDock AI Agent Operating System",
+            "current_project": current_project,
+            "project_metadata": metadata,
+            "available_projects": len(projects_list),
+            "cognitive_mode": "multi-project",
+            "capabilities": [
+                "project_management", "task_management", "memory_system",
+                "discussion_system", "ui_generation", "agent_coordination"
+            ],
+            "message": "Agent context loaded successfully"
+        }
+        
+        return json.dumps(context)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to get agent info: {str(e)}"})
+
+# ==============================================================================
+# ENHANCED TASK MANAGEMENT TOOLS - With Complexity Analysis
+# ==============================================================================
+
+@mcp.tool()
+async def neurodock_add_task(
+    title: str,
+    description: str = "",
+    priority: str = "medium",
+    assign_to: str = "",
+    project_name: str = ""
+) -> str:
+    """Add a new task with automatic complexity analysis and decomposition suggestions.
+    
+    Args:
+        title: Task title
+        description: Detailed task description
+        priority: Task priority (low/medium/high/urgent)
+        assign_to: Team member assignment
+        project_name: Project to add task to (defaults to current project)
+    
+    Returns:
+        JSON string with task creation status and complexity analysis
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Analyze task complexity
+        complexity_analysis = analyze_task_complexity(description, title)
+        
+        # Create task with complexity data
+        task_data = {
+            'id': f"task_{int(datetime.now().timestamp())}",
+            'title': title,
+            'description': description,
+            'priority': priority,
+            'assign_to': assign_to,
+            'status': 'pending',
+            'created_at': datetime.now().isoformat(),
+            'project': current_project_name,
+            'complexity': complexity_analysis
+        }
+        
+        # Store task (simplified for MCP - would normally use CLI task storage)
+        store = get_neurodock_store()
+        if store:
+            # Store in database
+            task_id = store.create_task(
+                title=title,
+                description=description,
+                priority=priority,
+                assign_to=assign_to
+            )
+            task_data['id'] = task_id
+        
+        # Update project metadata
+        update_project_metadata(current_project_name, task_count=1)
+        
+        result = {
+            "success": True,
+            "task": task_data,
+            "complexity_analysis": complexity_analysis,
+            "message": f"✅ Task '{title}' created with complexity rating {complexity_analysis['complexity_rating']}/10"
+        }
+        
+        # Add decomposition suggestion if needed
+        if complexity_analysis['needs_decomposition']:
+            result['recommendation'] = f"⚠️ High complexity task (rating {complexity_analysis['complexity_rating']}/10). Consider using neurodock_decompose_task to break it down."
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to add task: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_rate_task_complexity(
+    task_title: str,
+    task_description: str = ""
+) -> str:
+    """Analyze and rate the complexity of a task using AI-powered heuristics.
+    
+    Args:
+        task_title: The task title to analyze
+        task_description: The task description to analyze
+    
+    Returns:
+        JSON string with detailed complexity analysis
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        analysis = analyze_task_complexity(task_description, task_title)
+        
+        result = {
+            "task_title": task_title,
+            "complexity_analysis": analysis,
+            "recommendations": []
+        }
+        
+        # Add recommendations based on complexity
+        if analysis['needs_decomposition']:
+            result['recommendations'].append(
+                f"🔨 Consider breaking this task down using neurodock_decompose_task - complexity rating is {analysis['complexity_rating']}/10"
+            )
+        
+        if analysis['complexity_rating'] >= 8:
+            result['recommendations'].append(
+                "⚠️ This is a very high complexity task. Consider creating a detailed plan first."
+            )
+        
+        if analysis['effort_estimate'] in ["1-2 days", "3+ days"]:
+            result['recommendations'].append(
+                "📅 This task may need multiple work sessions. Consider setting milestones."
+            )
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to analyze task complexity: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_decompose_task(
+    task_title: str,
+    task_description: str,
+    max_subtasks: int = 5
+) -> str:
+    """Break down a complex task into smaller, manageable subtasks.
+    
+    Args:
+        task_title: The complex task title
+        task_description: The complex task description  
+        max_subtasks: Maximum number of subtasks to create (default: 5)
+    
+    Returns:
+        JSON string with decomposed subtasks and implementation plan
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # First analyze complexity
+        complexity_analysis = analyze_task_complexity(task_description, task_title)
+        
+        if not complexity_analysis['needs_decomposition']:
+            return json.dumps({
+                "warning": f"Task complexity rating is {complexity_analysis['complexity_rating']}/10 - decomposition may not be necessary",
+                "original_task": {
+                    "title": task_title,
+                    "description": task_description,
+                    "complexity": complexity_analysis
+                },
+                "recommendation": "This task is already manageable. Consider proceeding as-is."
+            })
+        
+        # Use LLM to generate subtasks (simplified for now)
+        # In full implementation, this would call the LLM for intelligent decomposition
+        subtasks = [
+            {
+                "title": f"Research and planning for {task_title}",
+                "description": "Investigate requirements, constraints, and approach",
+                "priority": "high",
+                "estimated_effort": "1-2 hours"
+            },
+            {
+                "title": f"Design phase for {task_title}",
+                "description": "Create detailed design and architecture",
+                "priority": "high", 
+                "estimated_effort": "2-4 hours"
+            },
+            {
+                "title": f"Implementation phase 1",
+                "description": "Begin core implementation work",
+                "priority": "medium",
+                "estimated_effort": "4-6 hours"
+            },
+            {
+                "title": f"Testing and validation",
+                "description": "Test implementation and validate requirements",
+                "priority": "medium",
+                "estimated_effort": "2-3 hours"
+            },
+            {
+                "title": f"Documentation and cleanup",
+                "description": "Document changes and clean up code",
+                "priority": "low",
+                "estimated_effort": "1-2 hours"
+            }
+        ]
+        
+        # Limit to max_subtasks
+        subtasks = subtasks[:max_subtasks]
+        
+        result = {
+            "success": True,
+            "original_task": {
+                "title": task_title,
+                "description": task_description,
+                "complexity": complexity_analysis
+            },
+            "subtasks": subtasks,
+            "total_subtasks": len(subtasks),
+            "estimated_total_effort": "10-17 hours",
+            "message": f"✅ Decomposed '{task_title}' into {len(subtasks)} manageable subtasks"
+        }
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to decompose task: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_complete_task(
+    task_id: str,
+    completion_notes: str = "",
+    project_name: str = ""
+) -> str:
+    """Mark a task as completed and update project progress statistics.
+    
+    Args:
+        task_id: ID of the task to complete
+        completion_notes: Optional notes about the completion
+        project_name: Project containing the task (defaults to current project)
+    
+    Returns:
+        JSON string with completion status and updated project metrics
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Get database store
+        store = get_neurodock_store()
+        if not store:
+            return json.dumps({"error": "Database store not available"})
+        
+        # Update task status
+        success = store.update_task_status(task_id, 'completed')
+        
+        if not success:
+            return json.dumps({"error": f"Task '{task_id}' not found or update failed"})
+        
+        # Get updated task info
+        task = store.get_task(task_id)
+        
+        # Update project metadata with completion
+        project_metadata = get_project_metadata(current_project_name)
+        if project_metadata:
+            completed_tasks = project_metadata.get('completed_tasks', 0) + 1
+            update_project_metadata(
+                current_project_name,
+                completed_tasks=completed_tasks,
+                last_activity='task_completed'
+            )
+        
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "task": task if task else {"id": task_id, "status": "completed"},
+            "completion_notes": completion_notes,
+            "completed_at": datetime.now().isoformat(),
+            "project": current_project_name,
+            "message": f"✅ Task '{task_id}' marked as completed"
+        }
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to complete task: {str(e)}"})
 
 def initialize_neurodock():
     """Initialize NeuroDock connections and verify system availability"""
