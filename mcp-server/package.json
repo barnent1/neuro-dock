@@ -1,0 +1,36 @@
+{
+  "name": "@neurodock/mcp-server",
+  "version": "2.0.0",
+  "description": "Model Context Protocol server for NeuroDock project management",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "neurodock-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "npm run build && node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol", 
+    "neurodock",
+    "ai",
+    "project-management"
+  ],
+  "author": "NeuroDock Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

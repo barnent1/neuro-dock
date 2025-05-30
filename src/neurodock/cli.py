@@ -33,7 +33,390 @@ try:
 except ImportError:
     MEMORY_AVAILABLE = False
 
+# Multi-project support
+CURRENT_PROJECT_FILE = ".neuro-dock/current_project.json"
+PROJECTS_DIR = ".neuro-dock/projects"
+
+# Initialize Typer app
 app = typer.Typer(no_args_is_help=True)
+
+def get_current_project():
+    """Get the currently active project."""
+    try:
+        if os.path.exists(CURRENT_PROJECT_FILE):
+            with open(CURRENT_PROJECT_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('active_project')
+    except Exception:
+        pass
+    return None
+
+def set_current_project(project_name: str):
+    """Set the currently active project."""
+    os.makedirs(os.path.dirname(CURRENT_PROJECT_FILE), exist_ok=True)
+    with open(CURRENT_PROJECT_FILE, 'w') as f:
+        json.dump({
+            'active_project': project_name,
+            'updated_at': datetime.now().isoformat()
+        }, f, indent=2)
+
+def get_project_path(project_name: str = None):
+    """Get the path to a project's data directory."""
+    if project_name is None:
+        project_name = get_current_project()
+    if project_name is None:
+        raise ValueError("No active project. Use 'add-project' to create one.")
+    
+    project_path = os.path.join(PROJECTS_DIR, project_name)
+    os.makedirs(project_path, exist_ok=True)
+    return project_path
+
+def list_available_projects():
+    """List all available projects."""
+    if not os.path.exists(PROJECTS_DIR):
+        return []
+    
+    projects = []
+    for item in os.listdir(PROJECTS_DIR):
+        project_path = os.path.join(PROJECTS_DIR, item)
+        if os.path.isdir(project_path):
+            # Try to load project metadata
+            metadata_path = os.path.join(project_path, "metadata.json")
+            metadata = {}
+            if os.path.exists(metadata_path):
+                try:
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                except Exception:
+                    pass
+            
+            projects.append({
+                'name': item,
+                'description': metadata.get('description', ''),
+                'created_at': metadata.get('created_at', ''),
+                'last_active': metadata.get('last_active', ''),
+                'task_count': metadata.get('task_count', 0),
+                'memory_count': metadata.get('memory_count', 0)
+            })
+    
+    return projects
+
+def create_project(name: str, description: str = ""):
+    """Create a new project with isolated workspace."""
+    project_path = os.path.join(PROJECTS_DIR, name)
+    
+    if os.path.exists(project_path):
+        raise ValueError(f"Project '{name}' already exists")
+    
+    os.makedirs(project_path, exist_ok=True)
+    
+    # Create project metadata
+    metadata = {
+        'name': name,
+        'description': description,
+        'created_at': datetime.now().isoformat(),
+        'last_active': datetime.now().isoformat(),
+        'task_count': 0,
+        'memory_count': 0,
+        'status': 'active'
+    }
+    
+    metadata_path = os.path.join(project_path, "metadata.json")
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    # Create project subdirectories
+    os.makedirs(os.path.join(project_path, "tasks"), exist_ok=True)
+    os.makedirs(os.path.join(project_path, "memory"), exist_ok=True)
+    os.makedirs(os.path.join(project_path, "context"), exist_ok=True)
+    
+    return metadata
+
+def update_project_metadata(project_name: str = None, **updates):
+    """Update project metadata."""
+    if project_name is None:
+        project_name = get_current_project()
+    if project_name is None:
+        return
+        
+    project_path = get_project_path(project_name)
+    metadata_path = os.path.join(project_path, "metadata.json")
+    
+    metadata = {}
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+        except Exception:
+            pass
+    
+    metadata.update(updates)
+    metadata['last_active'] = datetime.now().isoformat()
+    
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+def get_project_metadata(project_name: str = None):
+    """Get project metadata."""
+    if project_name is None:
+        project_name = get_current_project()
+    if project_name is None:
+        return None
+        
+    project_path = get_project_path(project_name)
+    metadata_path = os.path.join(project_path, "metadata.json")
+    
+    if not os.path.exists(metadata_path):
+        return None
+        
+    try:
+        with open(metadata_path, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def get_project_status(project_name: str = None):
+    """Get comprehensive project status."""
+    if project_name is None:
+        project_name = get_current_project()
+    if project_name is None:
+        return None
+        
+    project_path = get_project_path(project_name)
+    metadata_path = os.path.join(project_path, "metadata.json")
+    
+    # Load metadata
+    metadata = {}
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+        except Exception:
+            pass
+    
+    # Count tasks by status
+    tasks_path = os.path.join(project_path, "tasks")
+    task_stats = {'total': 0, 'pending': 0, 'in_progress': 0, 'completed': 0, 'blocked': 0}
+    
+    if os.path.exists(tasks_path):
+        for task_file in os.listdir(tasks_path):
+            if task_file.endswith('.json'):
+                try:
+                    with open(os.path.join(tasks_path, task_file), 'r') as f:
+                        task = json.load(f)
+                        task_stats['total'] += 1
+                        status = task.get('status', 'pending')
+                        if status in task_stats:
+                            task_stats[status] += 1
+                except Exception:
+                    pass
+    
+    # Count memory entries
+    memory_path = os.path.join(project_path, "memory")
+    memory_count = 0
+    if os.path.exists(memory_path):
+        memory_count = len([f for f in os.listdir(memory_path) if f.endswith('.json')])
+    
+    # Calculate completion percentage
+    completion_pct = 0
+    if task_stats['total'] > 0:
+        completion_pct = round((task_stats['completed'] / task_stats['total']) * 100, 1)
+    
+    return {
+        'project': metadata,
+        'tasks': task_stats,
+        'memory_count': memory_count,
+        'completion_percentage': completion_pct,
+        'is_active': project_name == get_current_project()
+    }
+
+@app.command()
+def add_project(
+    name: str = typer.Argument(..., help="Project name"),
+    description: str = typer.Option("", "--desc", help="Project description")
+):
+    """Create a new isolated project workspace."""
+    console = Console()
+    
+    try:
+        # Validate project name
+        if not name.replace('-', '').replace('_', '').isalnum():
+            console.print("❌ [red]Project name must contain only letters, numbers, hyphens, and underscores[/red]")
+            return
+        
+        metadata = create_project(name, description)
+        
+        console.print(f"✅ [green]Created project '[bold]{name}[/bold]'[/green]")
+        if description:
+            console.print(f"📝 Description: {description}")
+        
+        # Set as active project
+        set_current_project(name)
+        console.print(f"🎯 [blue]Set '[bold]{name}[/bold]' as active project[/blue]")
+        
+        # Show next steps
+        console.print("\n🚀 [bold]Next steps:[/bold]")
+        console.print("   • Use 'nd plan' to create project plan")
+        console.print("   • Use 'nd tasks' to view tasks")
+        console.print("   • Use 'nd memory' to manage project knowledge")
+        
+    except ValueError as e:
+        console.print(f"❌ [red]{e}[/red]")
+    except Exception as e:
+        console.print(f"❌ [red]Failed to create project: {e}[/red]")
+
+@app.command()
+def list_projects():
+    """List all available projects."""
+    console = Console()
+    projects = list_available_projects()
+    current_project = get_current_project()
+    
+    if not projects:
+        console.print("📭 [yellow]No projects found. Use 'nd add-project <name>' to create one.[/yellow]")
+        return
+    
+    console.print(f"📋 [bold]Available Projects ({len(projects)})[/bold]\n")
+    
+    for project in projects:
+        is_active = project['name'] == current_project
+        status_icon = "🎯" if is_active else "📁"
+        active_text = " [bold green](ACTIVE)[/bold green]" if is_active else ""
+        
+        console.print(f"{status_icon} [bold]{project['name']}[/bold]{active_text}")
+        if project['description']:
+            console.print(f"   📝 {project['description']}")
+        
+        console.print(f"   📊 {project['task_count']} tasks • {project['memory_count']} memories")
+        if project['created_at']:
+            console.print(f"   📅 Created: {project['created_at'][:10]}")
+        console.print()
+
+@app.command()
+def set_active_project(name: str = typer.Argument(..., help="Project name to activate")):
+    """Switch to a different project workspace."""
+    console = Console()
+    
+    try:
+        projects = list_available_projects()
+        project_names = [p['name'] for p in projects]
+        
+        if name not in project_names:
+            console.print(f"❌ [red]Project '{name}' not found[/red]")
+            console.print(f"Available projects: {', '.join(project_names)}")
+            return
+        
+        set_current_project(name)
+        update_project_metadata(name)  # Update last_active
+        
+        console.print(f"🎯 [green]Switched to project '[bold]{name}[/bold]'[/green]")
+        
+        # Show project status
+        status = get_project_status(name)
+        if status:
+            console.print(f"📊 {status['tasks']['total']} tasks ({status['completion_percentage']}% complete)")
+            console.print(f"🧠 {status['memory_count']} memory entries")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to switch project: {e}[/red]")
+
+@app.command()
+def remove_project(
+    name: str = typer.Argument(..., help="Project name to remove"),
+    confirm: bool = typer.Option(False, "--yes", help="Skip confirmation")
+):
+    """Remove a project and all its data."""
+    console = Console()
+    
+    try:
+        projects = list_available_projects()
+        project_names = [p['name'] for p in projects]
+        
+        if name not in project_names:
+            console.print(f"❌ [red]Project '{name}' not found[/red]")
+            return
+        
+        if not confirm:
+            console.print(f"⚠️  [yellow]This will permanently delete project '[bold]{name}[/bold]' and all its data![/yellow]")
+            confirm_input = typer.confirm("Are you sure?")
+            if not confirm_input:
+                console.print("❌ [yellow]Operation cancelled[/yellow]")
+                return
+        
+        # Remove project directory
+        project_path = os.path.join(PROJECTS_DIR, name)
+        if os.path.exists(project_path):
+            shutil.rmtree(project_path)
+        
+        # If this was the active project, clear it
+        current_project = get_current_project()
+        if current_project == name:
+            if os.path.exists(CURRENT_PROJECT_FILE):
+                os.remove(CURRENT_PROJECT_FILE)
+            console.print("🎯 [blue]Cleared active project (no project selected)[/blue]")
+        
+        console.print(f"✅ [green]Removed project '[bold]{name}[/bold]'[/green]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to remove project: {e}[/red]")
+
+@app.command()
+def project_status(name: str = typer.Option(None, help="Project name (default: current project)")):
+    """Show comprehensive project status and analytics."""
+    console = Console()
+    
+    try:
+        if name is None:
+            name = get_current_project()
+            if name is None:
+                console.print("❌ [red]No active project. Use 'nd list-projects' to see available projects.[/red]")
+                return
+        
+        status = get_project_status(name)
+        if status is None:
+            console.print(f"❌ [red]Project '{name}' not found[/red]")
+            return
+        
+        project = status['project']
+        tasks = status['tasks']
+        
+        # Project header
+        active_indicator = " 🎯 (ACTIVE)" if status['is_active'] else ""
+        console.print(f"📋 [bold]{project.get('name', name)}{active_indicator}[/bold]")
+        
+        if project.get('description'):
+            console.print(f"📝 {project['description']}")
+        
+        console.print()
+        
+        # Progress overview
+        completion = status['completion_percentage']
+        progress_bar = "█" * int(completion/5) + "░" * (20 - int(completion/5))
+        console.print(f"📊 [bold]Progress: {completion}%[/bold] [{progress_bar}]")
+        console.print()
+        
+        # Task breakdown
+        console.print("🎯 [bold]Tasks Overview:[/bold]")
+        console.print(f"   📋 Total: {tasks['total']}")
+        console.print(f"   ⏳ Pending: {tasks['pending']}")
+        console.print(f"   🔄 In Progress: {tasks['in_progress']}")
+        console.print(f"   ✅ Completed: {tasks['completed']}")
+        if tasks['blocked'] > 0:
+            console.print(f"   🚫 Blocked: {tasks['blocked']}")
+        console.print()
+        
+        # Memory and knowledge
+        console.print(f"🧠 [bold]Knowledge Base:[/bold] {status['memory_count']} entries")
+        console.print()
+        
+        # Timestamps
+        if project.get('created_at'):
+            console.print(f"📅 Created: {project['created_at'][:19].replace('T', ' ')}")
+        if project.get('last_active'):
+            console.print(f"🕒 Last Active: {project['last_active'][:19].replace('T', ' ')}")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to get project status: {e}[/red]")
 
 def _show_agent_reminders(command: str, result: str = "", context: dict = None):
     """Show Agent 2 reminders after command completion."""
@@ -608,17 +991,8 @@ Consider dependencies and logical sequencing.
         typer.echo(f"❌ Unexpected error: {e}", err=True)
         raise typer.Exit(1)
 
-@app.command()
-def run(
-    interactive: bool = typer.Option(False, "--interactive", "-i", help="Run in interactive mode to select tasks manually"),
-    task_name: str = typer.Option(None, "--task", "-t", help="Run a specific task by name"),
-    build: bool = typer.Option(False, "--build", "-b", help="Execute build commands after file generation")
-):
-    """Read task plan from database and automatically run all incomplete tasks sequentially.
-    
-    By default, runs all incomplete tasks in order. Use --interactive to select tasks manually.
-    Use --task to run a specific task by name. Use --build to execute build commands after generation.
-    """
+def _run_internal(interactive: bool = False, task_name: str = None, build: bool = False):
+    """Internal function to execute run logic without typer decorations."""
     root = Path.cwd()
     nd_path = root / ".neuro-dock"
     
@@ -805,8 +1179,15 @@ Project Context:
 Name: {project_info.get('name', 'Unknown Project')}
 Description: {project_info.get('description', 'No description')}
 
+IMPORTANT: You are working in the current project directory that may already contain some files. When setting up frameworks like Next.js, React, etc., DO NOT use scaffolding tools like create-next-app if the directory is not empty, as they will fail. Instead, manually set up the project by creating the necessary files and installing dependencies.
+
 Choose the best approach to complete this task. You can use shell commands, create files, or both.
-For framework setup tasks (Next.js, React, Django, etc.), prefer scaffolding tools when available.
+For framework setup in non-empty directories, manually create the project structure instead of using scaffolding tools.
+
+CRITICAL FILE FORMAT RULES:
+- For JSON files (.json): Provide complete, valid JSON content. DO NOT use "..." or comments.
+- For config files: Always provide complete content, not placeholders.
+- For code files: You can use "// ...existing code..." comments to represent unchanged sections.
 
 Return your response as JSON with this structure:
 {{
@@ -814,19 +1195,24 @@ Return your response as JSON with this structure:
     "actions": [
         {{
             "type": "command",
-            "command": "npx create-next-app@latest my-app --typescript --tailwind",
-            "description": "Create Next.js project with TypeScript and Tailwind"
+            "command": "npm init -y",
+            "description": "Initialize package.json"
+        }},
+        {{
+            "type": "command",
+            "command": "npm install next@latest react@latest react-dom@latest typescript @types/react @types/node tailwindcss autoprefixer postcss eslint eslint-config-next",
+            "description": "Install Next.js and dependencies"
         }},
         {{
             "type": "file",
-            "path": "relative/path/to/file.ext",
-            "content": "file content here"
+            "path": "package.json",
+            "content": '{{"name": "my-app", "version": "1.0.0", "scripts": {{"dev": "next dev"}} }}'
         }}
     ]
 }}
 
 Action types available:
-- "command": Execute shell commands (npm install, scaffolding tools, etc.)
+- "command": Execute shell commands (npm install, git commands, etc.)
 - "file": Create or modify files
 - "directory": Create directories
 
@@ -879,7 +1265,11 @@ Make sure the approach is production-ready and follows modern development best p
                 description = action.get("description", command)
                 typer.echo(f"🔧 Running: {description}")
                 
-                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                # Set environment variables to avoid warnings
+                env = os.environ.copy()
+                env['TOKENIZERS_PARALLELISM'] = 'false'
+                
+                result = subprocess.run(command, shell=True, capture_output=True, text=True, env=env)
                 if result.returncode == 0:
                     typer.echo(f"✅ Command completed successfully")
                     if result.stdout.strip():
@@ -1268,9 +1658,9 @@ def develop(
     
     # Use existing run functionality but with enhanced workflow
     if task:
-        run(task_name=task)
+        _run_internal(task_name=task)
     elif interactive:
-        run(interactive=True)
+        _run_internal(interactive=True)
     elif all_tasks:
         # Execute all tasks with checkpoints
         initialize_schema()
@@ -1289,7 +1679,7 @@ def develop(
             typer.echo(f"\n🎯 Executing task {i}/{len(tasks)}: {task_name}")
             
             try:
-                run(task_name=task_name)
+                _run_internal(task_name=task_name)
                 completed_count += 1
                 
                 # Human checkpoint
@@ -1306,7 +1696,7 @@ def develop(
         
         typer.echo(f"\n🎉 Development session completed! {completed_count}/{len(tasks)} tasks finished.")
     else:
-        run()
+        _run_internal()
 
 @app.command()
 def test(
@@ -1575,7 +1965,7 @@ Provide actionable insights for continuous improvement."""
         
         typer.echo(f"✅ Retrospective report saved to {retro_file}")
         typer.echo("\n📋 PROJECT RETROSPECTIVE:")
-        typer.echo("=" * 50)
+        typer.echo("=" *  50)
         typer.echo(retro_content[:500] + "..." if len(retro_content) > 500 else retro_content)
         
     except Exception as e:
@@ -1988,3 +2378,498 @@ def discuss_answer():
 def main():
     """Main entry point for the CLI application."""
     app()
+
+if __name__ == "__main__":
+    main()
+
+# Task management functions for multi-project support
+def get_task_file_path(task_id: str, project_name: str = None):
+    """Get the file path for a task."""
+    if project_name is None:
+        project_name = get_current_project()
+    if project_name is None:
+        raise ValueError("No active project")
+    
+    project_path = get_project_path(project_name)
+    tasks_path = os.path.join(project_path, "tasks")
+    os.makedirs(tasks_path, exist_ok=True)
+    return os.path.join(tasks_path, f"{task_id}.json")
+
+def load_task(task_id: str, project_name: str = None):
+    """Load a task from file."""
+    task_file = get_task_file_path(task_id, project_name)
+    if not os.path.exists(task_file):
+        return None
+    
+    try:
+        with open(task_file, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def save_task(task_data: dict, project_name: str = None):
+    """Save a task to file."""
+    if 'id' not in task_data:
+        # Generate ID if not provided
+        task_data['id'] = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(str(datetime.now().microsecond))}"
+    
+    task_file = get_task_file_path(task_data['id'], project_name)
+    with open(task_file, 'w') as f:
+        json.dump(task_data, f, indent=2)
+    
+    # Update project metadata
+    update_project_metadata(project_name, task_count=len(list_project_tasks(project_name)))
+    return task_data
+
+def list_project_tasks(project_name: str = None):
+    """List all tasks for a project."""
+    if project_name is None:
+        project_name = get_current_project()
+    if project_name is None:
+        return []
+    
+    project_path = get_project_path(project_name)
+    tasks_path = os.path.join(project_path, "tasks")
+    
+    if not os.path.exists(tasks_path):
+        return []
+    
+    tasks = []
+    for task_file in os.listdir(tasks_path):
+        if task_file.endswith('.json'):
+            task_id = task_file[:-5]  # Remove .json
+            task = load_task(task_id, project_name)
+            if task:
+                tasks.append(task)
+    
+    # Sort by created date
+    tasks.sort(key=lambda t: t.get('created_at', ''), reverse=True)
+    return tasks
+
+def analyze_task_complexity(description: str, title: str = "") -> dict:
+    """Analyze task complexity and provide a rating."""
+    # Simple heuristic-based complexity analysis
+    complexity_indicators = {
+        'high': ['architecture', 'design', 'integration', 'database', 'api', 'security', 
+                'authentication', 'deployment', 'performance', 'optimization', 'migration'],
+        'medium': ['component', 'feature', 'endpoint', 'model', 'service', 'test', 
+                  'validation', 'formatting', 'styling', 'responsive'],
+        'low': ['fix', 'update', 'modify', 'adjust', 'change', 'add', 'remove', 
+               'color', 'text', 'typo', 'link', 'button']
+    }
+    
+    text = (title + " " + description).lower()
+    word_count = len(text.split())
+    
+    # Base complexity on content
+    high_score = sum(1 for word in complexity_indicators['high'] if word in text)
+    medium_score = sum(1 for word in complexity_indicators['medium'] if word in text)
+    low_score = sum(1 for word in complexity_indicators['low'] if word in text)
+    
+    # Calculate complexity rating (1-10)
+    base_score = high_score * 3 + medium_score * 2 + low_score * 1
+    
+    # Adjust for word count
+    if word_count > 50:
+        base_score += 2
+    elif word_count > 25:
+        base_score += 1
+    
+    # Normalize to 1-10 scale
+    complexity_rating = min(10, max(1, base_score))
+    
+    # Determine if decomposition is needed
+    needs_decomposition = complexity_rating >= 7
+    
+    # Estimate effort
+    if complexity_rating <= 3:
+        effort_estimate = "1-2 hours"
+        difficulty = "Low"
+    elif complexity_rating <= 6:
+        effort_estimate = "3-8 hours"
+        difficulty = "Medium"
+    elif complexity_rating <= 8:
+        effort_estimate = "1-2 days"
+        difficulty = "High"
+    else:
+        effort_estimate = "3+ days"
+        difficulty = "Very High"
+    
+    return {
+        'complexity_rating': complexity_rating,
+        'difficulty': difficulty,
+        'effort_estimate': effort_estimate,
+        'needs_decomposition': needs_decomposition,
+        'analysis': {
+            'high_complexity_indicators': high_score,
+            'medium_complexity_indicators': medium_score,
+            'low_complexity_indicators': low_score,
+            'word_count': word_count
+        }
+    }
+
+@app.command()
+def add_task(
+    title: str = typer.Argument(..., help="Task title"),
+    description: str = typer.Option("", "--desc", help="Task description"),
+    priority: str = typer.Option("medium", "--priority", help="Task priority (low/medium/high/urgent)"),
+    assign_to: str = typer.Option("", "--assign", help="Assign to team member"),
+):
+    """Add a new task with automatic complexity analysis."""
+    console = Console()
+    
+    try:
+        project_name = get_current_project()
+        if project_name is None:
+            console.print("❌ [red]No active project. Use 'nd add-project <name>' to create one.[/red]")
+            return
+        
+        # Analyze task complexity
+        complexity = analyze_task_complexity(description, title)
+        
+        # Create task
+        task_data = {
+            'id': f"task_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            'title': title,
+            'description': description,
+            'priority': priority,
+            'status': 'pending',
+            'assigned_to': assign_to,
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat(),
+            'project': project_name,
+            'complexity_rating': complexity['complexity_rating'],
+            'difficulty': complexity['difficulty'],
+            'effort_estimate': complexity['effort_estimate'],
+            'needs_decomposition': complexity['needs_decomposition']
+        }
+        
+        saved_task = save_task(task_data, project_name)
+        
+        console.print(f"✅ [green]Created task '[bold]{title}[/bold]'[/green]")
+        console.print(f"🔢 Task ID: {saved_task['id']}")
+        console.print(f"📊 Complexity: {complexity['difficulty']} ({complexity['complexity_rating']}/10)")
+        console.print(f"⏱️  Estimated effort: {complexity['effort_estimate']}")
+        
+        if complexity['needs_decomposition']:
+            console.print("⚠️  [yellow]High complexity detected! Consider breaking this into subtasks.[/yellow]")
+            console.print("💡 Use 'nd decompose-task {}' to break it down".format(saved_task['id']))
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to create task: {e}[/red]")
+
+@app.command()
+def rate_task_complexity(task_id: str = typer.Argument(..., help="Task ID to analyze")):
+    """Analyze and rate the complexity of an existing task."""
+    console = Console()
+    
+    try:
+        task = load_task(task_id)
+        if task is None:
+            console.print(f"❌ [red]Task '{task_id}' not found[/red]")
+            return
+        
+        # Re-analyze complexity
+        complexity = analyze_task_complexity(task.get('description', ''), task.get('title', ''))
+        
+        # Update task with new complexity analysis
+        task.update({
+            'complexity_rating': complexity['complexity_rating'],
+            'difficulty': complexity['difficulty'],
+            'effort_estimate': complexity['effort_estimate'],
+            'needs_decomposition': complexity['needs_decomposition'],
+            'updated_at': datetime.now().isoformat()
+        })
+        
+        save_task(task)
+        
+        console.print(f"📊 [bold]Complexity Analysis for Task: {task['title']}[/bold]")
+        console.print(f"🔢 Complexity Rating: {complexity['complexity_rating']}/10")
+        console.print(f"📈 Difficulty Level: {complexity['difficulty']}")
+        console.print(f"⏱️  Effort Estimate: {complexity['effort_estimate']}")
+        
+        if complexity['needs_decomposition']:
+            console.print("\n⚠️  [yellow]Recommendation: Break this task into smaller subtasks[/yellow]")
+            console.print("💡 Use 'nd decompose-task {}' to get decomposition suggestions".format(task_id))
+        else:
+            console.print("\n✅ [green]Task complexity is manageable as-is[/green]")
+            
+        # Show analysis details
+        analysis = complexity['analysis']
+        console.print(f"\n🔍 [bold]Analysis Details:[/bold]")
+        console.print(f"   High complexity indicators: {analysis['high_complexity_indicators']}")
+        console.print(f"   Medium complexity indicators: {analysis['medium_complexity_indicators']}")
+        console.print(f"   Word count: {analysis['word_count']}")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to analyze task: {e}[/red]")
+
+@app.command()
+def decompose_task(task_id: str = typer.Argument(..., help="Task ID to decompose")):
+    """Break a complex task into smaller, manageable subtasks."""
+    console = Console()
+    
+    try:
+        task = load_task(task_id)
+        if task is None:
+            console.print(f"❌ [red]Task '{task_id}' not found[/red]")
+            return
+        
+        console.print(f"🔧 [bold]Decomposing Task: {task['title']}[/bold]")
+        
+        # Simple rule-based decomposition suggestions
+        title = task.get('title', '')
+        description = task.get('description', '')
+        
+        subtasks = []
+        
+        # Pattern-based decomposition
+        if 'api' in (title + description).lower():
+            subtasks.extend([
+                "Design API endpoints and data models",
+                "Implement request/response handling", 
+                "Add input validation and error handling",
+                "Write API documentation",
+                "Add unit tests for API endpoints"
+            ])
+        elif 'component' in (title + description).lower():
+            subtasks.extend([
+                "Create component structure and props interface",
+                "Implement component logic and state management",
+                "Add styling and responsive design",
+                "Write component tests",
+                "Update documentation and examples"
+            ])
+        elif 'database' in (title + description).lower():
+            subtasks.extend([
+                "Design database schema and relationships",
+                "Create migration scripts",
+                "Implement data access layer",
+                "Add data validation and constraints",
+                "Write database tests and seed data"
+            ])
+        else:
+            # Generic decomposition
+            subtasks.extend([
+                f"Research and plan approach for: {title}",
+                f"Implement core functionality for: {title}",
+                f"Add error handling and validation",
+                f"Write tests and documentation",
+                f"Review and refine implementation"
+            ])
+        
+        # Create subtasks
+        console.print(f"\n📋 [bold]Suggested Subtasks ({len(subtasks)}):[/bold]")
+        
+        created_subtasks = []
+        for i, subtask_title in enumerate(subtasks, 1):
+            subtask_data = {
+                'id': f"{task_id}_sub_{i}",
+                'title': subtask_title,
+                'description': f"Subtask of: {task['title']}",
+                'priority': task.get('priority', 'medium'),
+                'status': 'pending',
+                'parent_task': task_id,
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat(),
+                'project': task.get('project'),
+                'complexity_rating': 3,  # Subtasks should be simpler
+                'difficulty': 'Low',
+                'effort_estimate': '1-2 hours',
+                'needs_decomposition': False
+            }
+            
+            saved_subtask = save_task(subtask_data)
+            created_subtasks.append(saved_subtask)
+            
+            console.print(f"   {i}. [green]{subtask_title}[/green]")
+            console.print(f"      ID: {saved_subtask['id']}")
+        
+        # Update parent task status
+        task['status'] = 'decomposed'
+        task['subtasks'] = [st['id'] for st in created_subtasks]
+        task['updated_at'] = datetime.now().isoformat()
+        save_task(task)
+        
+        console.print(f"\n✅ [green]Created {len(created_subtasks)} subtasks[/green]")
+        console.print(f"🎯 [blue]Parent task marked as 'decomposed'[/blue]")
+        console.print("\n💡 Use 'nd list-tasks' to see all tasks including new subtasks")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to decompose task: {e}[/red]")
+
+@app.command()
+def complete_task(task_id: str = typer.Argument(..., help="Task ID to complete")):
+    """Mark a task as completed and update project status."""
+    console = Console()
+    
+    try:
+        task = load_task(task_id)
+        if task is None:
+            console.print(f"❌ [red]Task '{task_id}' not found[/red]")
+            return
+        
+        if task.get('status') == 'completed':
+            console.print(f"ℹ️  [blue]Task '{task['title']}' is already completed[/blue]")
+            return
+        
+        # Update task status
+        task['status'] = 'completed'
+        task['completed_at'] = datetime.now().isoformat()
+        task['updated_at'] = datetime.now().isoformat()
+        save_task(task)
+        
+        console.print(f"✅ [green]Completed task: '{task['title']}'[/green]")
+        
+        # Check if this completes a parent task
+        if 'parent_task' in task:
+            parent_id = task['parent_task']
+            parent_task = load_task(parent_id)
+            if parent_task and 'subtasks' in parent_task:
+                # Check if all subtasks are completed
+                all_completed = True
+                for subtask_id in parent_task['subtasks']:
+                    subtask = load_task(subtask_id)
+                    if subtask and subtask.get('status') != 'completed':
+                        all_completed = False
+                        break
+                
+                if all_completed:
+                    parent_task['status'] = 'completed'
+                    parent_task['completed_at'] = datetime.now().isoformat()
+                    parent_task['updated_at'] = datetime.now().isoformat()
+                    save_task(parent_task)
+                    console.print(f"🎉 [green]All subtasks completed! Parent task '{parent_task['title']}' is now complete.[/green]")
+        
+        # Show updated project status
+        project_status = get_project_status()
+        if project_status:
+            console.print(f"\n📊 [bold]Project Progress: {project_status['completion_percentage']}%[/bold]")
+            console.print(f"✅ Completed: {project_status['tasks']['completed']}/{project_status['tasks']['total']} tasks")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to complete task: {e}[/red]")
+
+@app.command()
+def remove_task(
+    task_id: str = typer.Argument(..., help="Task ID to remove"),
+    confirm: bool = typer.Option(False, "--yes", help="Skip confirmation")
+):
+    """Remove a task and optionally its subtasks."""
+    console = Console()
+    
+    try:
+        task = load_task(task_id)
+        if task is None:
+            console.print(f"❌ [red]Task '{task_id}' not found[/red]")
+            return
+        
+        # Check for subtasks
+        has_subtasks = 'subtasks' in task and task['subtasks']
+        
+        if not confirm:
+            console.print(f"⚠️  [yellow]This will permanently delete task: '{task['title']}'[/yellow]")
+            if has_subtasks:
+                console.print(f"⚠️  [yellow]This task has {len(task['subtasks'])} subtasks that will also be deleted![/yellow]")
+            
+            confirm_input = typer.confirm("Are you sure?")
+            if not confirm_input:
+                console.print("❌ [yellow]Operation cancelled[/yellow]")
+                return
+        
+        # Remove subtasks first
+        if has_subtasks:
+            for subtask_id in task['subtasks']:
+                subtask_file = get_task_file_path(subtask_id)
+                if os.path.exists(subtask_file):
+                    os.remove(subtask_file)
+            console.print(f"🗑️  [blue]Removed {len(task['subtasks'])} subtasks[/blue]")
+        
+        # Remove main task
+        task_file = get_task_file_path(task_id)
+        if os.path.exists(task_file):
+            os.remove(task_file)
+        
+        console.print(f"✅ [green]Removed task: '{task['title']}'[/green]")
+        
+        # Update project metadata
+        update_project_metadata()
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to remove task: {e}[/red]")
+
+@app.command()
+def list_tasks(
+    status: str = typer.Option("all", "--status", help="Filter by status (all/pending/in_progress/completed/blocked)"),
+    show_complexity: bool = typer.Option(True, "--complexity", help="Show complexity ratings")
+):
+    """List all tasks with complexity ratings and decomposition flags."""
+    console = Console()
+    
+    try:
+        project_name = get_current_project()
+        if project_name is None:
+            console.print("❌ [red]No active project. Use 'nd add-project <name>' to create one.[/red]")
+            return
+        
+        tasks = list_project_tasks(project_name)
+        
+        if status != "all":
+            tasks = [t for t in tasks if t.get('status') == status]
+        
+        if not tasks:
+            status_text = f" with status '{status}'" if status != "all" else ""
+            console.print(f"📭 [yellow]No tasks found{status_text}[/yellow]")
+            return
+        
+        console.print(f"📋 [bold]Tasks in Project '{project_name}' ({len(tasks)})[/bold]\n")
+        
+        for task in tasks:
+            # Status icon
+            status_icons = {
+                'pending': '⏳',
+                'in_progress': '🔄', 
+                'completed': '✅',
+                'blocked': '🚫',
+                'decomposed': '🔧'
+            }
+            
+            status_icon = status_icons.get(task.get('status', 'pending'), '📋')
+            
+            # Priority color
+            priority_colors = {
+                'low': 'blue',
+                'medium': 'yellow', 
+                'high': 'red',
+                'urgent': 'bright_red'
+            }
+            priority_color = priority_colors.get(task.get('priority', 'medium'), 'white')
+            
+            console.print(f"{status_icon} [bold]{task['title']}[/bold]")
+            console.print(f"   ID: {task['id']}")
+            console.print(f"   Status: [{priority_color}]{task.get('priority', 'medium').upper()}[/{priority_color}] • {task.get('status', 'pending').title()}")
+            
+            if show_complexity:
+                complexity = task.get('complexity_rating', 0)
+                difficulty = task.get('difficulty', 'Unknown')
+                effort = task.get('effort_estimate', 'Unknown')
+                
+                console.print(f"   Complexity: {difficulty} ({complexity}/10) • Effort: {effort}")
+                
+                if task.get('needs_decomposition'):
+                    console.print("   ⚠️  [yellow]Flagged for decomposition[/yellow]")
+            
+            if task.get('description'):
+                desc = task['description'][:100] + "..." if len(task['description']) > 100 else task['description']
+                console.print(f"   📝 {desc}")
+            
+            if 'subtasks' in task and task['subtasks']:
+                console.print(f"   🔧 {len(task['subtasks'])} subtasks")
+            
+            if 'parent_task' in task:
+                console.print(f"   ↳ Subtask of: {task['parent_task']}")
+            
+            console.print()
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to list tasks: {e}[/red]")

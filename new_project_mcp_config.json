@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "neurodock-advanced": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/barnent1/.neuro-dock/mcp-server/dist/index.js"
+      ]
+    }
+  }
+}

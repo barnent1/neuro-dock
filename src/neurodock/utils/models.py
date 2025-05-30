@@ -245,6 +245,8 @@ For real-world project structures and best practices:
 - Web: Use index.html, css/, js/, components/ folders
 - Node.js: Use package.json, src/, public/, etc.
 
+CRITICAL: Respond with VALID JSON only. Use DOUBLE QUOTES for all strings, NOT backticks.
+
 JSON FORMAT (respond with ONLY this structure):
 {{
     "actions": [
@@ -277,15 +279,44 @@ LEGACY FORMAT (also supported):
     "explanation": "Created a basic Python calculator."
 }}
 
-Respond with ONLY the JSON above. No additional text or explanations outside the JSON.
+IMPORTANT: Use double quotes (") for all string values. Do NOT use backticks (`). Escape newlines as \\n.
+Respond with ONLY valid JSON. No markdown, no code blocks, no explanations.
 """
     
     # Get the raw response from the LLM
     raw_response = call_llm(structured_prompt, use)
     
+    # Clean the response to fix common JSON formatting issues
+    def clean_json_response(response_text):
+        """Clean common JSON formatting issues from LLM responses."""
+        import re
+        
+        # Fix backtick template literals to proper JSON strings
+        # This handles: "content": `some content` -> "content": "some content"
+        response_text = re.sub(r'"content":\s*`([^`]*)`', r'"content": "\1"', response_text, flags=re.DOTALL)
+        
+        # Replace unescaped newlines in strings with \\n
+        # This is a simplified approach - might need refinement
+        response_text = re.sub(r'`([^`]*)`', lambda m: '"' + m.group(1).replace('\n', '\\n').replace('"', '\\"') + '"', response_text)
+        
+        return response_text
+    
     # Try to parse the response as JSON with multiple strategies
     try:
-        # Strategy 1: Try parsing the entire response as JSON
+        # Strategy 0: Clean and try parsing the entire response as JSON
+        cleaned_response = clean_json_response(raw_response.strip())
+        try:
+            response_data = json.loads(cleaned_response)
+            # Check for new actions format
+            if "actions" in response_data and "explanation" in response_data:
+                return response_data
+            # Check for legacy files format
+            elif "files" in response_data and "explanation" in response_data:
+                return response_data
+        except json.JSONDecodeError:
+            pass
+        
+        # Strategy 1: Try parsing the entire response as JSON (original)
         try:
             response_data = json.loads(raw_response.strip())
             # Check for new actions format
@@ -297,18 +328,22 @@ Respond with ONLY the JSON above. No additional text or explanations outside the
         except json.JSONDecodeError:
             pass
         
-        # Strategy 2: Find JSON block between curly braces
+        # Strategy 2: Find JSON block between curly braces and clean it
         start_idx = raw_response.find('{')
         end_idx = raw_response.rfind('}') + 1
         
         if start_idx != -1 and end_idx != 0:
             json_part = raw_response[start_idx:end_idx]
-            response_data = json.loads(json_part)
-            
-            # Validate the expected structure (both new and legacy formats)
-            if ("actions" in response_data and "explanation" in response_data) or \
-               ("files" in response_data and "explanation" in response_data):
-                return response_data
+            cleaned_json = clean_json_response(json_part)
+            try:
+                response_data = json.loads(cleaned_json)
+                
+                # Validate the expected structure (both new and legacy formats)
+                if ("actions" in response_data and "explanation" in response_data) or \
+                   ("files" in response_data and "explanation" in response_data):
+                    return response_data
+            except json.JSONDecodeError:
+                pass
         
         # Strategy 3: Look for code blocks in the response and create a simple structure
         lines = raw_response.split('\n')
