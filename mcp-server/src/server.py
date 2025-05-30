@@ -2398,11 +2398,7 @@ src/
 """
 
         # Store approval
-        store.add_memory({
-            "content": f"UI Component Approved: {description} (ID: {component_id})",
-            "type": "ui_generation_approved",
-            "metadata": component_data
-        })
+        store.add_memory(f"UI Component Approved: {description} (ID: {component_id})", "ui_generation_approved")
         
         return integration_guide
         
@@ -2492,11 +2488,7 @@ async def generate_full_app(
                 "preview_approved": False
             }
             
-            store.add_memory({
-                "content": f"Full App Generation Request: {app_description}",
-                "type": "app_generation",
-                "metadata": app_request
-            })
+            store.add_memory(f"Full App Generation Request: {app_description}", "app_generation")
         
         result = {
             "status": "preview_required",
@@ -2682,11 +2674,7 @@ async def approve_full_app(app_id: str, custom_domain: str = "", feedback: str =
 """
 
         # Store approval
-        store.add_memory({
-            "content": f"Full App Approved: {description} (ID: {app_id})",
-            "type": "app_generation_approved", 
-            "metadata": app_data
-        })
+        store.add_memory(f"Full App Approved: {description} (ID: {app_id})", "app_generation_approved")
         
         return deployment_guide
         
@@ -2783,11 +2771,8 @@ async def cancel_ui_generation(generation_id: str, reason: str = "User cancelled
                 metadata["cancellation_reason"] = reason
                 
                 # Store cancellation
-                store.add_memory({
-                    "content": f"UI Generation Cancelled: {metadata.get('description', '')} (ID: {generation_id})",
-                    "type": f"{memory.get('type')}_cancelled",
-                    "metadata": metadata
-                })
+                cancellation_text = f"UI Generation Cancelled: {metadata.get('description', '')} (ID: {generation_id}) - Reason: {reason}"
+                store.add_memory(cancellation_text, f"{memory.get('type')}_cancelled")
                 
                 return f"✅ UI Generation {generation_id} has been cancelled.\nReason: {reason}"
         
