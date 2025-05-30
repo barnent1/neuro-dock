@@ -1665,6 +1665,509 @@ async def neurodock_get_project_insights(
     except Exception as e:
         return json.dumps({"error": f"Failed to get project insights: {str(e)}"})
 
+@mcp.tool()
+async def neurodock_auto_decompose(
+    task_description: str,
+    threshold: int = 7,
+    project_name: str = ""
+) -> str:
+    """Automatically analyze and decompose tasks that exceed complexity threshold.
+    
+    Args:
+        task_description: Description of the task to analyze
+        threshold: Complexity threshold for auto-decomposition (default: 7)
+        project_name: Project to associate with (defaults to current project)
+    
+    Returns:
+        JSON string with decomposition analysis and recommendations
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # First, analyze the task complexity
+        complexity_result = await neurodock_rate_task_complexity(
+            task_description=task_description,
+            project_name=current_project_name
+        )
+        
+        complexity_data = json.loads(complexity_result)
+        
+        if "error" in complexity_data:
+            return json.dumps({"error": f"Failed to analyze complexity: {complexity_data['error']}"})
+        
+        complexity_score = complexity_data.get("complexity_score", 0)
+        
+        # Auto-decompose if complexity exceeds threshold
+        should_decompose = complexity_score >= threshold
+        
+        decomposition_result = {}
+        if should_decompose:
+            decompose_result = await neurodock_decompose_task(
+                task_description=task_description,
+                project_name=current_project_name
+            )
+            decomposition_result = json.loads(decompose_result)
+        
+        # Generate recommendations
+        recommendations = []
+        if should_decompose:
+            recommendations.extend([
+                f"Task complexity ({complexity_score}/10) exceeds threshold ({threshold})",
+                "Consider breaking this task into smaller subtasks",
+                "Focus on one subtask at a time for better progress tracking",
+                "Each subtask should have complexity ≤ 6 for optimal execution"
+            ])
+        else:
+            recommendations.extend([
+                f"Task complexity ({complexity_score}/10) is within manageable range",
+                "Task can be executed as a single unit",
+                "Consider adding specific milestones if task duration > 1 day"
+            ])
+        
+        result = {
+            "success": True,
+            "task_description": task_description,
+            "complexity_score": complexity_score,
+            "threshold": threshold,
+            "should_decompose": should_decompose,
+            "auto_decomposed": should_decompose,
+            "decomposition": decomposition_result if should_decompose else None,
+            "recommendations": recommendations,
+            "project": current_project_name,
+            "analysis_timestamp": datetime.now().isoformat()
+        }
+        
+        # Store the auto-decomposition analysis in memory
+        store = get_neurodock_store()
+        if store:
+            memory_content = f"Auto-decomposition analysis for: {task_description}\nComplexity: {complexity_score}/10\nDecomposed: {should_decompose}"
+            store.add_memory({
+                "content": memory_content,
+                "type": "auto_decomposition",
+                "project": current_project_name,
+                "task_description": task_description,
+                "complexity_score": complexity_score,
+                "auto_decomposed": should_decompose,
+                "created_at": datetime.now().isoformat()
+            })
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to auto-decompose task: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_plan(
+    project_goal: str,
+    project_name: str = "",
+    planning_horizon: str = "sprint",
+    auto_create_tasks: bool = True
+) -> str:
+    """Interactive project planning with automatic task creation and complexity analysis.
+    
+    Args:
+        project_goal: High-level goal or objective for the project
+        project_name: Project to plan for (defaults to current project)
+        planning_horizon: Planning timeframe (sprint, month, quarter)
+        auto_create_tasks: Whether to automatically create tasks from the plan
+    
+    Returns:
+        JSON string with comprehensive project plan and created tasks
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Get database store
+        store = get_neurodock_store()
+        if not store:
+            return json.dumps({"error": "Database store not available"})
+        
+        # Analyze the project goal and generate planning framework
+        planning_framework = {
+            "project_goal": project_goal,
+            "planning_horizon": planning_horizon,
+            "suggested_phases": [],
+            "estimated_complexity": 0,
+            "recommended_approach": "",
+            "success_metrics": []
+        }
+        
+        # Break down the goal into logical phases/milestones
+        if "web" in project_goal.lower() or "app" in project_goal.lower():
+            planning_framework["suggested_phases"] = [
+                {"phase": "Requirements & Design", "tasks": ["Define user requirements", "Create wireframes", "Design system architecture"]},
+                {"phase": "Development Setup", "tasks": ["Setup development environment", "Initialize project structure", "Configure tooling"]},
+                {"phase": "Core Development", "tasks": ["Implement core features", "Build user interface", "Setup database"]},
+                {"phase": "Testing & Deployment", "tasks": ["Write tests", "Performance optimization", "Deploy to production"]}
+            ]
+        elif "research" in project_goal.lower() or "analysis" in project_goal.lower():
+            planning_framework["suggested_phases"] = [
+                {"phase": "Research Planning", "tasks": ["Define research questions", "Literature review", "Methodology design"]},
+                {"phase": "Data Collection", "tasks": ["Gather data sources", "Setup data pipeline", "Quality validation"]},
+                {"phase": "Analysis", "tasks": ["Exploratory analysis", "Statistical modeling", "Results interpretation"]},
+                {"phase": "Documentation", "tasks": ["Write findings", "Create visualizations", "Prepare presentation"]}
+            ]
+        else:
+            # Generic project structure
+            planning_framework["suggested_phases"] = [
+                {"phase": "Planning & Preparation", "tasks": ["Define scope and objectives", "Resource planning", "Risk assessment"]},
+                {"phase": "Implementation", "tasks": ["Execute main deliverables", "Progress monitoring", "Quality assurance"]},
+                {"phase": "Review & Completion", "tasks": ["Final review", "Documentation", "Project closure"]}
+            ]
+        
+        # Calculate planning metrics
+        total_tasks = sum(len(phase["tasks"]) for phase in planning_framework["suggested_phases"])
+        planning_framework["estimated_complexity"] = min(10, max(3, total_tasks // 2))
+        
+        # Generate recommendations based on horizon
+        if planning_horizon == "sprint":
+            planning_framework["recommended_approach"] = "Focus on 1-2 phases with clear deliverables"
+            planning_framework["success_metrics"] = ["Daily progress updates", "Weekly milestone reviews"]
+        elif planning_horizon == "month":
+            planning_framework["recommended_approach"] = "Complete 2-3 phases with iterative feedback"
+            planning_framework["success_metrics"] = ["Weekly progress reviews", "Bi-weekly stakeholder updates"]
+        else:  # quarter
+            planning_framework["recommended_approach"] = "Full project lifecycle with regular checkpoints"
+            planning_framework["success_metrics"] = ["Monthly milestone reviews", "Quarterly goal assessment"]
+        
+        created_tasks = []
+        if auto_create_tasks:
+            # Create tasks for each phase
+            for phase in planning_framework["suggested_phases"]:
+                for task_desc in phase["tasks"]:
+                    # Create the task
+                    task_result = await neurodock_add_task(
+                        description=task_desc,
+                        category=phase["phase"].lower().replace(" ", "_"),
+                        project_name=current_project_name,
+                        auto_analyze=True
+                    )
+                    
+                    task_data = json.loads(task_result)
+                    if "success" in task_data and task_data["success"]:
+                        created_tasks.append({
+                            "task_id": task_data.get("task_id"),
+                            "description": task_desc,
+                            "phase": phase["phase"],
+                            "complexity": task_data.get("complexity_analysis", {}).get("complexity_score", "unknown")
+                        })
+        
+        # Store planning session in memory
+        memory_content = f"Project Planning Session: {project_goal}\nHorizon: {planning_horizon}\nPhases: {len(planning_framework['suggested_phases'])}\nTasks Created: {len(created_tasks)}"
+        store.add_memory({
+            "content": memory_content,
+            "type": "project_planning",
+            "project": current_project_name,
+            "project_goal": project_goal,
+            "planning_horizon": planning_horizon,
+            "phases_count": len(planning_framework["suggested_phases"]),
+            "tasks_created": len(created_tasks),
+            "created_at": datetime.now().isoformat()
+        })
+        
+        result = {
+            "success": True,
+            "project": current_project_name,
+            "planning_framework": planning_framework,
+            "auto_created_tasks": auto_create_tasks,
+            "created_tasks": created_tasks,
+            "planning_summary": {
+                "total_phases": len(planning_framework["suggested_phases"]),
+                "total_tasks": len(created_tasks),
+                "estimated_complexity": planning_framework["estimated_complexity"],
+                "planning_horizon": planning_horizon
+            },
+            "next_steps": [
+                "Review and refine the suggested tasks",
+                "Prioritize tasks based on dependencies",
+                "Set realistic timelines for each phase",
+                "Begin with the highest priority tasks"
+            ],
+            "message": f"📋 Project plan created for '{current_project_name}' with {len(created_tasks)} tasks",
+            "planned_at": datetime.now().isoformat()
+        }
+        
+        return json.dumps(result, default=str)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to create project plan: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_cognitive_loop() -> str:
+    """Execute the cognitive loop for context awareness and intelligent recommendations.
+    
+    This tool is designed to be auto-called by AI assistants to maintain cognitive awareness
+    of the current project state and provide intelligent recommendations.
+    
+    Returns:
+        JSON string with cognitive context and recommendations
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Get current project context
+        current_project = get_current_project()
+        
+        if not current_project:
+            return json.dumps({
+                "cognitive_status": "no_active_project",
+                "recommendation": "Set an active project using neurodock_set_active_project or create a new project",
+                "suggested_actions": ["neurodock_list_projects", "neurodock_add_project"]
+            })
+        
+        # Get database store
+        store = get_neurodock_store()
+        if not store:
+            return json.dumps({"error": "Database store not available"})
+        
+        # Gather cognitive context
+        cognitive_context = {
+            "project": current_project,
+            "timestamp": datetime.now().isoformat(),
+            "context_analysis": {},
+            "task_intelligence": {},
+            "memory_insights": {},
+            "recommendations": [],
+            "priority_actions": []
+        }
+        
+        # Analyze current tasks
+        tasks = list_project_tasks(current_project)
+        pending_tasks = [t for t in tasks if t.get('status') == 'pending']
+        in_progress_tasks = [t for t in tasks if t.get('status') == 'in_progress']
+        completed_tasks = [t for t in tasks if t.get('status') == 'completed']
+        
+        cognitive_context["task_intelligence"] = {
+            "total_tasks": len(tasks),
+            "pending_count": len(pending_tasks),
+            "in_progress_count": len(in_progress_tasks),
+            "completed_count": len(completed_tasks),
+            "completion_rate": round(len(completed_tasks) / max(1, len(tasks)) * 100, 1),
+            "high_complexity_tasks": []
+        }
+        
+        # Identify high complexity tasks that might need decomposition
+        for task in pending_tasks + in_progress_tasks:
+            if task.get('complexity', 0) >= 7:
+                cognitive_context["task_intelligence"]["high_complexity_tasks"].append({
+                    "id": task.get('id'),
+                    "description": task.get('description', ''),
+                    "complexity": task.get('complexity'),
+                    "status": task.get('status')
+                })
+        
+        # Analyze recent memory patterns
+        all_memories = store.get_all_memories()
+        project_memories = [m for m in all_memories if m.get('project') == current_project]
+        recent_memories = sorted(project_memories, key=lambda x: x.get('created_at', ''), reverse=True)[:5]
+        
+        cognitive_context["memory_insights"] = {
+            "total_memories": len(project_memories),
+            "recent_activity_types": [m.get('type', 'unknown') for m in recent_memories],
+            "knowledge_areas": {}
+        }
+        
+        # Generate intelligent recommendations
+        recommendations = []
+        priority_actions = []
+        
+        # Task-based recommendations
+        if len(in_progress_tasks) == 0 and len(pending_tasks) > 0:
+            recommendations.append("No tasks in progress - consider starting the highest priority pending task")
+            priority_actions.append("neurodock_list_tasks status=pending")
+        
+        if len(cognitive_context["task_intelligence"]["high_complexity_tasks"]) > 0:
+            recommendations.append(f"Found {len(cognitive_context['task_intelligence']['high_complexity_tasks'])} high-complexity tasks that could benefit from decomposition")
+            priority_actions.append("neurodock_auto_decompose")
+        
+        if cognitive_context["task_intelligence"]["completion_rate"] < 20:
+            recommendations.append("Low task completion rate - consider reviewing task scope and priorities")
+            priority_actions.append("neurodock_plan")
+        
+        # Memory-based recommendations
+        if len(project_memories) < 5:
+            recommendations.append("Limited project memory - consider adding key decisions and insights to build knowledge base")
+            priority_actions.append("neurodock_add_memory")
+        
+        # Progress-based recommendations
+        if len(tasks) == 0:
+            recommendations.append("No tasks defined - start with project planning to create structured roadmap")
+            priority_actions.append("neurodock_plan")
+        
+        cognitive_context["recommendations"] = recommendations[:5]  # Limit to top 5
+        cognitive_context["priority_actions"] = priority_actions[:3]  # Limit to top 3
+        
+        # Generate context summary
+        cognitive_context["context_analysis"] = {
+            "project_health": "healthy" if cognitive_context["task_intelligence"]["completion_rate"] > 60 else "needs_attention",
+            "activity_level": "high" if len(recent_memories) >= 3 else "low",
+            "focus_area": "task_execution" if len(in_progress_tasks) > 0 else "planning",
+            "cognitive_load": "high" if len(cognitive_context["task_intelligence"]["high_complexity_tasks"]) > 2 else "manageable"
+        }
+        
+        # Store cognitive loop execution in memory
+        store.add_memory({
+            "content": f"Cognitive loop executed for project: {current_project}",
+            "type": "cognitive_loop",
+            "project": current_project,
+            "context_summary": cognitive_context["context_analysis"],
+            "recommendations_count": len(recommendations),
+            "created_at": datetime.now().isoformat()
+        })
+        
+        return json.dumps(cognitive_context, default=str)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to execute cognitive loop: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_agent_behavior(
+    behavior_mode: str = "adaptive",
+    focus_area: str = "auto",
+    verbosity: str = "normal"
+) -> str:
+    """Configure and retrieve agent behavior settings for cognitive consistency.
+    
+    Args:
+        behavior_mode: Agent behavior mode (adaptive, focused, exploratory, systematic)
+        focus_area: Primary focus area (auto, planning, execution, analysis, learning)
+        verbosity: Response verbosity (minimal, normal, detailed, comprehensive)
+    
+    Returns:
+        JSON string with behavior configuration and guidelines
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        current_project = get_current_project()
+        
+        # Define behavior profiles
+        behavior_profiles = {
+            "adaptive": {
+                "description": "Adapts approach based on project context and user patterns",
+                "characteristics": ["Context-aware responses", "Dynamic task prioritization", "Learning from interactions"],
+                "ideal_for": "Most general-purpose work and evolving projects"
+            },
+            "focused": {
+                "description": "Maintains sharp focus on current objectives with minimal distractions",
+                "characteristics": ["Goal-oriented responses", "Reduced exploratory suggestions", "Task completion emphasis"],
+                "ideal_for": "Sprint work, deadlines, and execution phases"
+            },
+            "exploratory": {
+                "description": "Encourages creative thinking and broader perspective",
+                "characteristics": ["Alternative approach suggestions", "Creative problem-solving", "Broader context awareness"],
+                "ideal_for": "Research, brainstorming, and innovation projects"
+            },
+            "systematic": {
+                "description": "Emphasizes structured approaches and methodical progress",
+                "characteristics": ["Step-by-step guidance", "Process optimization", "Quality assurance focus"],
+                "ideal_for": "Complex projects, compliance work, and systematic development"
+            }
+        }
+        
+        # Define focus areas
+        focus_areas = {
+            "auto": "Automatically determine focus based on project state and recent activity",
+            "planning": "Emphasize project planning, task organization, and strategic thinking",
+            "execution": "Focus on task completion, progress tracking, and immediate actions",
+            "analysis": "Prioritize data analysis, insights generation, and pattern recognition",
+            "learning": "Emphasize knowledge acquisition, skill development, and improvement"
+        }
+        
+        # Generate behavior configuration
+        selected_profile = behavior_profiles.get(behavior_mode, behavior_profiles["adaptive"])
+        selected_focus = focus_areas.get(focus_area, focus_areas["auto"])
+        
+        behavior_config = {
+            "behavior_mode": behavior_mode,
+            "focus_area": focus_area,
+            "verbosity": verbosity,
+            "profile": selected_profile,
+            "focus_description": selected_focus,
+            "current_project": current_project,
+            "configured_at": datetime.now().isoformat()
+        }
+        
+        # Generate agent instructions based on configuration
+        agent_instructions = []
+        
+        if behavior_mode == "adaptive":
+            agent_instructions.extend([
+                "Monitor project context and adapt recommendations accordingly",
+                "Learn from user patterns and adjust approach dynamically",
+                "Balance between different work modes as needed"
+            ])
+        elif behavior_mode == "focused":
+            agent_instructions.extend([
+                "Prioritize current objectives and minimize distractions",
+                "Provide direct, actionable guidance",
+                "Emphasize task completion and progress"
+            ])
+        elif behavior_mode == "exploratory":
+            agent_instructions.extend([
+                "Encourage creative approaches and alternative solutions",
+                "Suggest broader perspectives and innovative ideas",
+                "Support research and discovery activities"
+            ])
+        elif behavior_mode == "systematic":
+            agent_instructions.extend([
+                "Follow structured methodologies and best practices",
+                "Emphasize quality, documentation, and process",
+                "Provide step-by-step guidance for complex tasks"
+            ])
+        
+        # Add focus-specific instructions
+        if focus_area == "planning":
+            agent_instructions.append("Prioritize project planning tools and strategic guidance")
+        elif focus_area == "execution":
+            agent_instructions.append("Focus on task completion and immediate actionable steps")
+        elif focus_area == "analysis":
+            agent_instructions.append("Emphasize data analysis and insight generation")
+        elif focus_area == "learning":
+            agent_instructions.append("Support knowledge acquisition and skill development")
+        
+        behavior_config["agent_instructions"] = agent_instructions
+        
+        # Store behavior configuration
+        store = get_neurodock_store()
+        if store and current_project:
+            store.add_memory({
+                "content": f"Agent behavior configured: {behavior_mode} mode, {focus_area} focus",
+                "type": "agent_behavior_config",
+                "project": current_project,
+                "behavior_mode": behavior_mode,
+                "focus_area": focus_area,
+                "verbosity": verbosity,
+                "created_at": datetime.now().isoformat()
+            })
+        
+        return json.dumps(behavior_config, default=str)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to configure agent behavior: {str(e)}"})
+
 def initialize_neurodock():
     """Initialize NeuroDock connections and verify system availability"""
     try:
