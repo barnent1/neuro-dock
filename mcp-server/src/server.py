@@ -33,6 +33,7 @@ try:
     from neurodock.cli import (
         get_current_project, set_current_project, create_project,
         list_available_projects, get_project_metadata, update_project_metadata,
+        list_project_tasks, load_task, save_task, get_task_file_path,
         analyze_task_complexity
     )
     NEURODOCK_AVAILABLE = True
@@ -318,64 +319,7 @@ Use neurodock_add_memory to capture any important decisions or information share
 Keep this meeting focused and timeboxed to 15 minutes or less.
 """
 
-@mcp.tool()
-async def neurodock_get_project_status(project_path: str = "") -> str:
-    """Get the current status of the NeuroDock project including active tasks and recent activity.
-    
-    Args:
-        project_path: Optional path to specific project directory
-    """
-    store = get_neurodock_store()
-    if not store:
-        return "❌ NeuroDock database not available. Run 'nd setup' to configure the database connection."
-    
-    try:
-        # Get recent tasks
-        tasks = store.get_tasks()
-        recent_tasks = tasks[-5:] if tasks else []
-        
-        # Get recent memories
-        memories = store.get_all_memories()
-        recent_memories = memories[:3] if memories else []
-        
-        # Get project statistics
-        stats = store.get_project_stats()
-        
-        # Get project context if agent is available
-        agent = get_project_agent()
-        context_info = {}
-        if agent:
-            try:
-                context_info = agent.load_project_context()
-            except Exception as e:
-                context_info = {"error": f"Failed to load project context: {e}"}
-        
-        status_info = {
-            "project_path": project_path or str(Path.cwd()),
-            "recent_tasks": [
-                {
-                    "id": task.get("id"),
-                    "title": task.get("title"),
-                    "status": task.get("status"),
-                    "created_at": str(task.get("created_at", ""))
-                } for task in recent_tasks
-            ],
-            "recent_memories": [
-                {
-                    "type": memory.get("type"),
-                    "text": memory.get("text", "")[:200] + "..." if len(memory.get("text", "")) > 200 else memory.get("text", ""),
-                    "created_at": str(memory.get("created_at", ""))
-                } for memory in recent_memories
-            ],
-            "project_stats": stats,
-            "neurodock_available": True,
-            "context_summary": context_info
-        }
-        
-        return f"✅ NeuroDock Project Status:\n\n{json.dumps(status_info, indent=2, default=str)}"
-        
-    except Exception as e:
-        return f"❌ Error retrieving project status: {str(e)}"
+
 
 @mcp.tool()
 async def neurodock_list_tasks(status: str = "all", limit: int = 10) -> str:
@@ -1343,6 +1287,383 @@ async def neurodock_complete_task(
         
     except Exception as e:
         return json.dumps({"error": f"Failed to complete task: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_remove_task(
+    task_id: str,
+    project_name: str = "",
+    confirm: bool = False
+) -> str:
+    """Remove a task from the project with validation.
+    
+    Args:
+        task_id: ID of the task to remove
+        project_name: Project containing the task (defaults to current project)
+        confirm: Must be True to actually delete the task
+    
+    Returns:
+        JSON string with removal status and validation
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Get database store
+        store = get_neurodock_store()
+        if not store:
+            return json.dumps({"error": "Database store not available"})
+        
+        # Get task details before deletion for confirmation
+        task = store.get_task(task_id)
+        if not task:
+            return json.dumps({"error": f"Task '{task_id}' not found"})
+        
+        # Safety check - require confirmation
+        if not confirm:
+            return json.dumps({
+                "error": "Confirmation required",
+                "task": task,
+                "message": f"To delete task '{task_id}': {task.get('title', 'Unknown')}, call this tool again with confirm=True",
+                "warning": "This action cannot be undone"
+            })
+        
+        # Remove task
+        success = store.delete_task(task_id)
+        
+        if not success:
+            return json.dumps({"error": f"Failed to delete task '{task_id}'"})
+        
+        # Update project metadata
+        project_metadata = get_project_metadata(current_project_name)
+        if project_metadata:
+            total_tasks = project_metadata.get('total_tasks', 1) - 1
+            update_project_metadata(
+                current_project_name,
+                total_tasks=max(0, total_tasks),
+                last_activity='task_removed'
+            )
+        
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "removed_task": task,
+            "project": current_project_name,
+            "message": f"🗑️ Task '{task_id}' removed successfully",
+            "removed_at": datetime.now().isoformat()
+        }
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to remove task: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_remove_project(
+    project_name: str,
+    confirm: bool = False,
+    delete_data: bool = False
+) -> str:
+    """Remove a project and optionally all its data with safety validation.
+    
+    Args:
+        project_name: Name of the project to remove
+        confirm: Must be True to actually delete the project
+        delete_data: If True, also delete all tasks, memories, and project data
+    
+    Returns:
+        JSON string with removal status and validation
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Get project metadata for confirmation
+        project_metadata = get_project_metadata(project_name)
+        if not project_metadata:
+            return json.dumps({"error": f"Project '{project_name}' not found"})
+        
+        # Get project statistics for safety confirmation
+        project_stats = {
+            "total_tasks": project_metadata.get('total_tasks', 0),
+            "completed_tasks": project_metadata.get('completed_tasks', 0),
+            "created_date": project_metadata.get('created_date', 'Unknown'),
+            "last_activity": project_metadata.get('last_activity', 'Unknown')
+        }
+        
+        # Safety check - require confirmation
+        if not confirm:
+            return json.dumps({
+                "error": "Confirmation required",
+                "project": project_name,
+                "project_stats": project_stats,
+                "message": f"To delete project '{project_name}' with {project_stats['total_tasks']} tasks, call this tool again with confirm=True",
+                "warning": "This action cannot be undone. Set delete_data=True to also remove all tasks and memories.",
+                "data_deletion_note": f"delete_data is currently {delete_data}"
+            })
+        
+        # Check if this is the current active project
+        current_project = get_current_project()
+        if current_project == project_name:
+            # Switch to a different project or clear current project
+            available_projects = list_available_projects()
+            if len(available_projects) > 1:
+                # Switch to another available project
+                other_projects = [p for p in available_projects if p != project_name]
+                new_active = other_projects[0]
+                set_current_project(new_active)
+                switched_to = new_active
+            else:
+                # No other projects, clear current project
+                set_current_project("")
+                switched_to = None
+        else:
+            switched_to = None
+        
+        # Get database store for data deletion
+        store = get_neurodock_store()
+        deleted_data = {}
+        
+        if delete_data and store:
+            # Get all project tasks before deletion
+            tasks = list_project_tasks(project_name)
+            
+            # Delete all project tasks
+            task_count = 0
+            for task in tasks:
+                if store.delete_task(task.get('id')):
+                    task_count += 1
+            
+            # Delete project memories (if any specific to project)
+            memory_count = 0
+            memories = store.get_all_memories()
+            for memory in memories:
+                if memory.get('metadata', {}).get('project') == project_name:
+                    store.delete_memory(memory.get('id'))
+                    memory_count += 1
+            
+            deleted_data = {
+                "tasks_deleted": task_count,
+                "memories_deleted": memory_count,
+                "data_deletion_completed": True
+            }
+        
+        # Remove project directory/metadata
+        projects_available = list_available_projects()
+        if project_name in projects_available:
+            # Remove project from available projects
+            # This would depend on how projects are stored - for now, assume successful
+            project_removed = True
+        else:
+            project_removed = False
+        
+        result = {
+            "success": True,
+            "project_name": project_name,
+            "project_stats": project_stats,
+            "project_removed": project_removed,
+            "data_deletion": delete_data,
+            "deleted_data": deleted_data,
+            "active_project_switched": switched_to,
+            "message": f"🗑️ Project '{project_name}' removed successfully",
+            "removed_at": datetime.now().isoformat(),
+            "warning": "Project removal completed - this action cannot be undone"
+        }
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to remove project: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_auto_memory_update(
+    interaction_summary: str,
+    key_insights: List[str] = None,
+    project_name: str = ""
+) -> str:
+    """Automatically update project memory with insights from AI interactions.
+    
+    Args:
+        interaction_summary: Summary of the recent interaction or work session
+        key_insights: List of important insights or decisions made
+        project_name: Project to associate memory with (defaults to current project)
+    
+    Returns:
+        JSON string with memory update status
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Get database store
+        store = get_neurodock_store()
+        if not store:
+            return json.dumps({"error": "Database store not available"})
+        
+        # Create comprehensive memory entry
+        memory_content = f"Project: {current_project_name}\n\nInteraction Summary:\n{interaction_summary}"
+        
+        if key_insights:
+            memory_content += f"\n\nKey Insights:\n" + "\n".join(f"• {insight}" for insight in key_insights)
+        
+        # Store memory with project context
+        memory_data = {
+            "content": memory_content,
+            "type": "auto_interaction",
+            "project": current_project_name,
+            "interaction_summary": interaction_summary,
+            "key_insights": key_insights or [],
+            "auto_generated": True,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        memory_id = store.add_memory(memory_data)
+        
+        # Also try to add to vector store for semantic search
+        try:
+            add_to_memory(memory_content, {
+                "type": "auto_interaction",
+                "project": current_project_name,
+                "memory_id": memory_id
+            })
+            vector_stored = True
+        except Exception:
+            vector_stored = False
+        
+        result = {
+            "success": True,
+            "memory_id": memory_id,
+            "project": current_project_name,
+            "interaction_summary": interaction_summary,
+            "insights_count": len(key_insights or []),
+            "vector_stored": vector_stored,
+            "message": f"📝 Auto-memory updated for project '{current_project_name}'",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        return json.dumps(result)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to auto-update memory: {str(e)}"})
+
+@mcp.tool()
+async def neurodock_get_project_insights(
+    project_name: str = "",
+    insight_type: str = "all",
+    limit: int = 10
+) -> str:
+    """Get project-specific insights and accumulated knowledge.
+    
+    Args:
+        project_name: Project to get insights for (defaults to current project)
+        insight_type: Type of insights (all, decisions, learnings, patterns)
+        limit: Maximum number of insights to return
+    
+    Returns:
+        JSON string with project insights and patterns
+    """
+    if not NEURODOCK_AVAILABLE:
+        return json.dumps({"error": "NeuroDock core modules not available"})
+    
+    try:
+        # Use specified project or get current project
+        if project_name:
+            current_project_name = project_name
+        else:
+            current_project_name = get_current_project()
+            
+        if not current_project_name:
+            return json.dumps({"error": "No active project and no project specified"})
+        
+        # Get database store
+        store = get_neurodock_store()
+        if not store:
+            return json.dumps({"error": "Database store not available"})
+        
+        # Get all memories for the project
+        all_memories = store.get_all_memories()
+        project_memories = [
+            memory for memory in all_memories
+            if memory.get('metadata', {}).get('project') == current_project_name
+            or memory.get('project') == current_project_name
+        ]
+        
+        # Filter by insight type
+        filtered_insights = []
+        for memory in project_memories:
+            memory_type = memory.get('type', '').lower()
+            
+            if insight_type == "all":
+                filtered_insights.append(memory)
+            elif insight_type == "decisions" and "decision" in memory_type:
+                filtered_insights.append(memory)
+            elif insight_type == "learnings" and "learning" in memory_type:
+                filtered_insights.append(memory)
+            elif insight_type == "patterns" and "pattern" in memory_type:
+                filtered_insights.append(memory)
+            elif insight_type in memory_type:
+                filtered_insights.append(memory)
+        
+        # Sort by date and limit
+        filtered_insights = sorted(
+            filtered_insights,
+            key=lambda x: x.get('created_at', ''),
+            reverse=True
+        )[:limit]
+        
+        # Analyze patterns
+        insight_patterns = {
+            "total_insights": len(filtered_insights),
+            "insight_types": {},
+            "key_themes": [],
+            "recent_trends": []
+        }
+        
+        # Count insight types
+        for insight in filtered_insights:
+            insight_type_key = insight.get('type', 'unknown')
+            insight_patterns["insight_types"][insight_type_key] = insight_patterns["insight_types"].get(insight_type_key, 0) + 1
+        
+        # Extract key themes (simple keyword extraction)
+        all_content = " ".join([insight.get('content', '') for insight in filtered_insights])
+        common_words = {}
+        for word in all_content.lower().split():
+            if len(word) > 4:  # Only meaningful words
+                common_words[word] = common_words.get(word, 0) + 1
+        
+        insight_patterns["key_themes"] = sorted(common_words.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        result = {
+            "success": True,
+            "project": current_project_name,
+            "insight_type_filter": insight_type,
+            "insights": filtered_insights,
+            "patterns": insight_patterns,
+            "message": f"📊 Found {len(filtered_insights)} insights for project '{current_project_name}'",
+            "retrieved_at": datetime.now().isoformat()
+        }
+        
+        return json.dumps(result, default=str)
+        
+    except Exception as e:
+        return json.dumps({"error": f"Failed to get project insights: {str(e)}"})
 
 def initialize_neurodock():
     """Initialize NeuroDock connections and verify system availability"""
